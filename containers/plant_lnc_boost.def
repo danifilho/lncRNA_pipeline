@@ -1,0 +1,38 @@
+Bootstrap: docker
+From: python:3.9-slim
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        libgomp1
+
+    pip install --no-cache-dir --upgrade pip
+    pip install --no-cache-dir \
+        biopython \
+        catboost \
+        numpy \
+        pandas \
+        scipy \
+        scikit-learn
+
+    git clone --depth 1 https://github.com/xuechantian/Plant-LncRNA-pipeline-v2.git /opt/Plant-LncRNA-pipeline-v2
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+%test
+    python3 -c "import Bio, catboost, numpy, pandas, scipy, sklearn"
+    test -f /opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script/Feature_extraction.py
+    test -f /opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb
+
+%runscript
+    exec python3 "$@"
+

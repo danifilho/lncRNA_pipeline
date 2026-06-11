@@ -1,0 +1,45 @@
+Bootstrap: docker
+From: ubuntu:18.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        python-pip \
+        python-setuptools \
+        python-wheel \
+        python-dev \
+        r-base \
+        libcurl4-openssl-dev \
+        libxml2-dev \
+        libssl-dev \
+        gcc \
+        g++ \
+        make \
+        zlib1g-dev \
+        libbz2-dev \
+        liblzma-dev \
+        libncurses5-dev
+
+    # 1. Upgrade pip to the last version that supported Python 2.7
+    pip install --upgrade "pip < 21.0"
+    
+    # 2. Pre-install the build tools
+    pip install "setuptools < 45.0.0"
+    pip install "wheel < 0.30.0"
+
+    # 3. Install Python 2.7 compatible versions of dependencies
+    pip install "numpy < 1.17"
+    pip install "cython < 0.30"
+    # Pysam 0.15 is the last stable version for Python 2.7
+    pip install "pysam == 0.15.3" 
+    
+    # 4. Finally, install CPAT 1.2.4
+    pip install CPAT==1.2.4
+
+%test
+    # Verify the legacy command exists
+    python2 -c "import cpat; print('CPAT Loaded')"
+    which cpat.py
+
+%runscript
+    exec cpat.py "$@"

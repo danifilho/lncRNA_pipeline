@@ -1,0 +1,38 @@
+#!/bin/bash --login
+#SBATCH --job-name=species_intersect
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64
+#SBATCH --time=1:00:00
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x_%j.out
+
+# Fix the locale warnings by setting LC_ALL and LANG to C (or en_US.UTF-8 if you prefer). This ensures that the script runs without locale-related issues, especially when processing text files with different encodings.
+export LC_ALL=C
+export LANG=C
+
+# Input files. script can run with at least two of the tools, and works with gtf and txt files.
+FEELnc="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/05_FEELnc/species_FEELnc.gtf"
+CPAT="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/06_cpat/species_cpat.output"
+lncBoost="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/07_lncBoost/species_predictions.txt"
+lncFinder="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/08_lncFinder/species_lncFinder_wheat_model_results.csv"
+DIAMOND="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/09_diamond/species_diamond_out.txt"
+
+echo -e ">>>Final intersect:\nInput files:\n${FEELnc}\n${CPAT}\n${lncFinder}\n${lncBoost}\n${DIAMOND}\n...\n"
+
+# Output files
+OUTDIR="/mnt/scratch/lemasjoh/BASF/species/03_output/10_final"
+OUTPFX="${OUTDIR}/species_" # set the filename prefix for the output files
+
+echo -e ">>>Final intersect:\nMaking output directory:\n${OUTDIR}\n...\n"
+
+mkdir -p $OUTDIR
+
+# Image
+IMAGE="/mnt/scratch/lemasjoh/BASF/scripts/intersect_ids.sif" # singularity image that has the necessary dependencies to run the intersect_ids.R script.
+
+# Pass the flags directly to the image
+cmd="singularity run $IMAGE -f $FEELnc -c $CPAT -l $lncFinder -b $lncBoost -d $DIAMOND -o $OUTPFX" # save run command in log file
+
+echo -e ">>> Running via Singularity Image...\n${cmd}\n"
+$cmd
+
+echo -e ">>>Final intersect:\nIntersection complete.\nlncRNA IDs:\n${OUTPFX}_final_ids.txt\nTool summary:\n${OUTPFX}_intersection_summary.csv\n"

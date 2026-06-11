@@ -1,0 +1,25 @@
+#!/bin/bash --login
+#SBATCH --job-name=species_feelnc_classify
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
+#SBATCH --time=02:00:00
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x_%j.out
+
+# 1. Paths to your files
+IMG="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/def_files/FEELnc.sif"
+FEELNC_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/scripts/FEELnc"
+LNC_GTF="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/10_final/species_lncRNA.gtf"
+mRNA_GTF="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/01_inputs/species_mRNA.gtf"
+OUT_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/10_final"
+
+# 2. Run the classifier
+# We use --env to pass the library path INTO the container
+singularity exec \
+  --env PERL5LIB="${FEELNC_DIR}/lib" \
+  $IMG \
+  perl ${FEELNC_DIR}/scripts/FEELnc_classifier.pl \
+    -i $LNC_GTF \
+    -a $mRNA_GTF \
+    -w 10000 \
+    -m 100000 \
+    -v 1 > ${OUT_DIR}/soy_lncRNA_classes.txt

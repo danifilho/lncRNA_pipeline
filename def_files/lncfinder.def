@@ -1,0 +1,70 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Maintainer your_name
+    Version v1.3
+    Description Stable Image for LncFinder and ViennaRNA compiled from source
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export PATH=/usr/local/bin:$PATH
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    # 1. Install system dependencies & building prerequisites
+    apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        dirmngr \
+        gnupg \
+        wget \
+        curl \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+        libfontconfig1-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libjpeg-dev \
+        build-essential \
+        gfortran \
+        cmake \
+        libgomp1
+
+    # 2. Add CRAN Repository and Install R (4.x)
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc
+    add-apt-repository -y "deb https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/"
+    apt-get update && apt-get install -y r-base r-base-dev
+
+    # 3. Download and Compile ViennaRNA from official Source 
+    # Bypasses all PPA/Apt-Key permission errors completely
+    cd /tmp
+    wget https://www.tbi.univie.ac.at/RNA/download/sourcecode/2_7_x/ViennaRNA-2.7.2.tar.gz
+    tar -zxvf ViennaRNA-2.7.2.tar.gz
+    cd ViennaRNA-2.7.2
+    
+    # Configure with OpenMP optimization for multi-threading
+    ./configure --without-perl --without-python --without-python3 --disable-all-bind
+    make -j$(nproc)
+    make install
+    
+    # Clean up the build files to keep the image compact
+    cd /tmp
+    rm -rf ViennaRNA-2.7.2*
+
+    # 4. Install R Packages (Fast bundled installation)
+    R -e "install.packages(c('seqinr', 'e1071', 'LncFinder'), repos='https://cloud.r-project.org')"
+
+    # 5. Clean up APT
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+%test
+    # Verify R and LncFinder packages
+    R -e "library(LncFinder); library(seqinr); library(e1071)"
+    # Verify RNAfold executable is natively available 
+    RNAfold --version

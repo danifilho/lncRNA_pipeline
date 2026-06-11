@@ -1,0 +1,46 @@
+Bootstrap: docker
+From: ubuntu:18.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        python-pip \
+        python-setuptools \
+        python-wheel \
+        python-dev \
+        r-base \
+        libcurl4-openssl-dev \
+        libxml2-dev \
+        libssl-dev \
+        gcc \
+        g++ \
+        make \
+        zlib1g-dev \
+        libbz2-dev \
+        liblzma-dev \
+        libncurses5-dev
+
+    pip install --upgrade "pip < 21.0"
+    pip install "setuptools < 45.0.0" "wheel < 0.30.0"
+    pip install "numpy < 1.17" "cython < 0.30" "pysam == 0.15.3"
+    pip install CPAT==1.2.4
+
+    git clone --depth 1 https://github.com/xuechantian/Plant-LncRNA-pipeline-v2.git /opt/Plant-LncRNA-pipeline-v2
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LC_ALL=C
+
+%test
+    python2 -c "import cpat"
+    which cpat.py
+    test -f /opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv
+
+%runscript
+    exec cpat.py "$@"
+

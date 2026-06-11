@@ -1,0 +1,28 @@
+species: "tests/smoke/project/testsp"
+prefix: "testsp"
+download_sra: false
+sra_accessions: "{species}/01_inputs/testsp_sra_IDs.txt"
+raw_fastq_dir: "{species}/01_inputs/raw_fastq"
+reference_fasta: "{species}/01_inputs/testsp.chromosomes.fa"
+annotation_gtf: "{species}/01_inputs/testsp_mRNA.gtf"
+diamond_db: "tests/smoke/project/resources/uniprot/uniprot_out.dmnd"
+uniprot_fasta: "tests/smoke/project/resources/uniprot/uniprot_sprot.fasta"
+cluster_truth: false
+run_truth_alignment: false
+threads:
+  prefetch: 1
+  fastp: 1
+  star_index: 1
+  star_align: 1
+  samtools_index: 1
+  stringtie_assemble: 1
+  stringtie_merge: 1
+  feelnc_filter: 1
+  cpat: 1
+  lncboost: 1
+  lncfinder: 1
+  diamond: 1
+  intersect: 1
+  gffread: 1
+  minimap2: 1
+  cdhit: 1

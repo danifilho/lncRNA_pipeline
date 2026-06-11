@@ -1,0 +1,5 @@
+ID	Predicted_label	Probability
+MSTRG.1.1	1	0.99
+MSTRG.2.1	1	0.82
+MSTRG.3.1	0	0.03
+

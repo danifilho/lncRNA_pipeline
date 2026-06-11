@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=iwgc_ath
+#SBATCH --partition=general-short
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --time=03:55:00
+#SBATCH --output=%x_%j.log
+
+set -euo pipefail
+
+PROJECT=/mnt/ffs24/home/dasilvaf/projects/IWGC_lncRNA_pipeline
+cd "$PROJECT"
+
+# Conda / snakemake
+source /mnt/ffs24/home/dasilvaf/miniforge3/etc/profile.d/conda.sh
+conda activate iwgc-lnc-snakemake
+
+# Make the apptainer/singularity binary (lives in base env) visible, without
+# shadowing the active env's binaries (append to PATH).
+export PATH="$PATH:/mnt/ffs24/home/dasilvaf/miniforge3/bin"
+
+# Bind the project tree into every container.
+export APPTAINER_BINDPATH="$PROJECT,/mnt/scratch/dasilvaf/iwgc_lncRNA"
+export APPTAINER_CACHEDIR="$PROJECT/.apptainer_cache"
+mkdir -p "$APPTAINER_CACHEDIR"
+
+echo "Host: $(hostname)"
+echo "snakemake: $(snakemake --version)"
+echo "apptainer: $(apptainer --version)"
+echo "cores: ${SLURM_CPUS_PER_TASK}"
+
+snakemake \
+  --snakefile workflow/Snakefile \
+  --configfile config/config.ath.yaml \
+  --cores "${SLURM_CPUS_PER_TASK}" \
+  --use-singularity \
+  --printshellcmds \
+  --rerun-triggers mtime \
+  --rerun-incomplete \
+  --keep-going
+
+echo "SNAKEMAKE_EXIT=$?"
+echo "=== Final outputs ==="
+ls -lah A.thaliana/03_outputs/10_final/ 2>&1 || true

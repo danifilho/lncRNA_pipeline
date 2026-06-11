@@ -1,0 +1,39 @@
+#!/bin/bash --login
+#SBATCH --job-name=species_merge
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --time=02:00:00
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x-%j.out
+
+# 1. Paths
+ID_FILE="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/01_inputs/species_sra_IDs.txt"
+GTF_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/03_stringtie/SRR_assemblies"
+REF_GTF="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/01_inputs/species_mRNA.gtf"
+OUT_GTF="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/03_stringtie/species_denovo_trans.gtf"
+
+# Load the file IDs into a Bash array
+mapfile -t SRA_IDS < "$ID_FILE"
+
+# Create the list of GTF file paths
+gtf_filePath=()
+for ID in "${SRA_IDS[@]}"; do
+    # Only add the file if it actually exists (to prevent StringTie from crashing)
+    FILE_PATH="${GTF_DIR}/${ID}_assembled.gtf"
+    if [ -f "$FILE_PATH" ]; then
+        gtf_filePath+=("$FILE_PATH")
+    else
+        echo "Warning: $FILE_PATH not found, skipping."
+    fi
+done
+
+ml purge
+ml load StringTie/2.2.1-GCC-11.2.0-Python-2.7.18
+
+# 2. Run the Merge
+# --merge: Tells StringTie to combine the list
+# -G: Your original reference (keeps known gene names)
+# -o: The final master file
+# -m: Minimum transcript length to include in the master (200bp)
+stringtie --merge -G $REF_GTF -m 200 -o $OUT_GTF ${gtf_filePath[*]}
+
+echo "Master Merge Complete: $OUT_GTF"

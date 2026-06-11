@@ -1,0 +1,15 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y r-base r-cran-tidyverse r-cran-optparse
+
+%files
+    /mnt/scratch/lemasjoh/BASF/scripts/classifications.R /usr/local/bin/classifications.R
+
+%environment
+    export LC_ALL=C
+
+%runscript
+    exec Rscript /usr/local/bin/classifications.R "$@"

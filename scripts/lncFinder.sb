@@ -1,0 +1,38 @@
+#!/bin/bash --login
+#SBATCH --job-name=species_lncFinder
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
+#SBATCH --time=3:00:00
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x_%j.out
+
+# Paths
+IMAGE="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/def_files/lncfinder.sif"
+RSCRIPT="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/02_scripts/lncFinder.R"
+
+INPUT_FASTA="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/04_gffread/species_candidates.fasta"
+OUTPUT_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/08_lncFinder"
+STRUCT_TXT="$OUTPUT_DIR/folded_structures.txt"
+
+mkdir -p $OUTPUT_DIR
+
+echo "=========================================================="
+echo "STARTING STEP 1: Native Stream RNA Folding via lncFinder image"
+echo "=========================================================="
+date
+
+singularity exec -B /mnt/scratch/lemasjoh $IMAGE \
+    RNAfold --noPS --jobs=$SLURM_CPUS_PER_TASK < "$INPUT_FASTA" > "$STRUCT_TXT"
+
+echo "=========================================================="
+echo "STARTING STEPS 2 & 3: Parsing and LncFinder Matrix Processing"
+echo "=========================================================="
+date
+
+# Run the unified R script inside the container
+singularity exec -B /mnt/scratch/lemasjoh $IMAGE \
+    Rscript $RSCRIPT
+
+echo "=========================================================="
+echo "PIPELINE FINISHED SUCCESSFULLY"
+echo "=========================================================="
+date

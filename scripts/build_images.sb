@@ -1,0 +1,40 @@
+#!/bin/bash --login
+#SBATCH --job-name=build_def_files
+#SBATCH --array=1-7
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --time=01:30:00
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x-%j_%A_%a.out
+
+# --- Absolute Paths ---
+BASE_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/def_files"
+LIST="$BASE_DIR/def_list.txt"
+
+# --- Setup ---
+# Fail immediately if any command inside the script fails
+set -e
+
+# --- Extract the Target File ---
+# Grab the base name (e.g., 'classifications') using the Slurm Array ID
+IMAGE_NAME=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$LIST" | tr -d '\r' | xargs)
+
+# Build full paths for the build process
+DEF_FILE="$BASE_DIR/${IMAGE_NAME}.def"
+SIF_IMAGE="$BASE_DIR/${IMAGE_NAME}.sif"
+
+# --- Execution ---
+echo "========================================="
+echo "Slurm Job ID:      $SLURM_JOB_ID"
+echo "Array Task ID:     $SLURM_ARRAY_TASK_ID"
+echo "Building Image:    $IMAGE_NAME"
+echo "From Def File:     $DEF_FILE"
+echo "Output Image:      $SIF_IMAGE"
+echo "Started at:        $(date)"
+echo "========================================="
+
+# Execute the container build using remote priveleges; make sure your access token from Sylabs is up to date in HPCC!
+singularity build --remote --force "$SIF_IMAGE" "$DEF_FILE"
+
+echo "========================================="
+echo "Finished building $IMAGE_NAME successfully at $(date)"
+echo "========================================="

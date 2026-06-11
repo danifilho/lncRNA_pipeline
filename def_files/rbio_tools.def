@@ -1,0 +1,43 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y \
+        r-base \
+        r-cran-tidyverse \
+        r-cran-optparse \
+        r-cran-readr \
+        r-cran-dplyr
+
+    # Ensure the scripts are in the system path and executable
+    chmod +x /usr/local/bin/intersect_ids.R
+    chmod +x /usr/local/bin/classifications.R
+
+%files
+    # Copy both of your existing R scripts into the image
+    /mnt/scratch/lemasjoh/BASF/scripts/intersect_ids.R /usr/local/bin/intersect_ids.R
+    /mnt/scratch/lemasjoh/BASF/scripts/classifications.R /usr/local/bin/classifications.R
+
+%environment
+    export LC_ALL=C
+
+%runscript
+    # This logic allows the image to decide which script to run
+    # based on the first word you type after 'singularity run'
+    if [ "$1" = "intersect" ]; then
+        shift
+        exec Rscript /usr/local/bin/intersect_ids.R "$@"
+    elif [ "$1" = "classify" ]; then
+        shift
+        exec Rscript /usr/local/bin/classifications.R "$@"
+    else
+        echo "Usage: singularity run rbio_tools.sif [intersect|classify] [options]"
+        echo "Available tools:"
+        echo "  intersect - Runs intersect_ids.R"
+        echo "  classify  - Runs classifications.R"
+    fi
+
+%labels
+    Author "lemasjoh"
+    Description "Combined R tools for lncRNA ID intersection and FEELnc classification splitting"

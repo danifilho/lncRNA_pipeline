@@ -1,0 +1,51 @@
+# ---- Container images (build artifacts; rebuild from containers/*.def) ----
+containers/images/
+*.sif
+
+# ---- Large reference / sequence data ----
+resources/
+**/01_inputs/raw_fastq/
+**/01_inputs/ncbi_raw/
+**/01_inputs/*.chromosomes.fa
+**/01_inputs/*_mRNA.gtf
+**/01_inputs/*_indexed/
+*.fa
+*.fasta
+*.fastq
+*.fastq.gz
+*.fna
+*.bam
+*.bam.bai
+*.dmnd
+
+# ---- Pipeline intermediate outputs (curated results live under docs/test_results) ----
+**/03_outputs/
+**/02_scripts/
+
+# ---- Backups / editor cruft ----
+*.orig
+*.bak
+*.bak2
+__pycache__/
+*.pyc
+
+# ---- Workflow / runtime cruft ----
+.snakemake/
+.apptainer_cache/
+.singularity_cache/
+.home/
+.cache/
+slurm-*.out
+*_*.log
+iwgc_ath_*.log
+
+# ---- OS ----
+.DS_Store
+**/.DS_Store
+
+# ---- Keep curated test results and smoke fixtures despite the sequence rules above ----
+!docs/test_results/**
+!tests/smoke/**
+# ...but never the generated smoke output or stray OS files inside fixtures
+tests/smoke/out/
+tests/smoke/**/.DS_Store

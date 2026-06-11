@@ -1,0 +1,51 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        perl \
+        cpanminus \
+        libxml2-dev \
+        libssl-dev \
+        zlib1g-dev \
+        libdb-dev \
+        libexpat1-dev \
+        libxml-parser-perl \
+        libxml-dom-perl \
+        libxml-twig-perl \
+        libmodule-build-perl \
+        bioperl \
+        libbio-db-seqfeature-perl
+
+    cpanm --force XML::Parser XML::DOM XML::Twig
+    cpanm Bio::Root::Version Bio::DB::Fasta Parallel::ForkManager \
+          Getopt::Long Set::IntervalTree LWP::UserAgent \
+          Bio::SeqFeature::Lite
+
+    git clone --depth 1 https://github.com/tderrien/FEELnc.git /opt/FEELnc
+    chmod +x /opt/FEELnc/scripts/*.pl
+    ln -sf /opt/FEELnc/scripts/FEELnc_filter.pl /usr/local/bin/FEELnc_filter.pl
+    ln -sf /opt/FEELnc/scripts/FEELnc_classifier.pl /usr/local/bin/FEELnc_classifier.pl
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export FEELNCPATH=/opt/FEELnc/bin
+    export PERL5LIB=/opt/FEELnc/lib:$PERL5LIB
+    export PATH=/opt/FEELnc/scripts:$PATH
+    export LC_ALL=C
+
+%test
+    FEELnc_filter.pl --help >/dev/null 2>&1 || true
+    test -x /usr/local/bin/FEELnc_filter.pl
+    test -x /usr/local/bin/FEELnc_classifier.pl
+
+%runscript
+    exec FEELnc_filter.pl "$@"
+

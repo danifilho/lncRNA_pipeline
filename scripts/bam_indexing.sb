@@ -1,0 +1,21 @@
+#!/bin/bash --login
+#SBATCH --job-name=bam_index
+#SBATCH --array=1-[# of samples] # wc -l species_sra_IDs.txt to get the number of samples
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=01:00:00 # for 165 samples
+#SBATCH --output=/mnt/scratch/lemasjoh/BASF/logs/%x-%j_%A_%a.out
+
+# 1. Paths
+LIST="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/01_inputs/species_sra_IDs.txt"
+ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$LIST" | tr -d '\r' | xargs) # pulls the sra accession for the current array task ID
+DATA_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/01_fastp" # this is where the trimmed fastq files are located, which should be named according to the logic below (e.g., SRR1234567_1_trim.fastq.gz for paired-end or SRR1234567_trim.fastq.gz for single-end)
+INDEX_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/01_inputs/species_indexed" # indexed genome from star_genomegeneratete.sb script
+OUT_DIR="/mnt/scratch/lemasjoh/BASF/IWGC_lncRNA_pipeline/species/03_outputs/02_STAR" # this is where the STAR output will go, which will be organized by sample ID (e.g., SRR1234567_Aligned.sortedByCoord.out.bam)
+
+ml purge
+ml load SAMtools/1.19.2-GCC-13.2.0
+
+# 2. Index the BAM file
+echo "Indexing BAM for $ID..."
+samtools index ${OUT_DIR}/${ID}_Aligned.sortedByCoord.out.bam

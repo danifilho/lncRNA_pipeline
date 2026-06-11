@@ -1,0 +1,10 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+%runscript
+    exec python3 "$@"
+

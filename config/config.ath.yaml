@@ -1,0 +1,95 @@
+# Snakemake configuration for the IWGC lncRNA pipeline - Arabidopsis TAIR10 test.
+# Paths are relative to the repository root unless they start with "/".
+
+species: "A.thaliana"
+prefix: "ath"
+
+# FASTQ already downloaded from ENA into raw_fastq; no SRA download needed.
+download_sra: false
+
+# Input layout.
+sra_accessions: "{species}/01_inputs/{species}_sra_IDs.txt"
+raw_fastq_dir: "{species}/01_inputs/raw_fastq"
+reference_fasta: "{species}/01_inputs/{species}.chromosomes.fa"
+annotation_gtf: "{species}/01_inputs/{species}_mRNA.gtf"
+
+# Output layout.
+fastp_dir: "{species}/03_outputs/01_fastp"
+star_dir: "{species}/03_outputs/02_STAR"
+stringtie_dir: "{species}/03_outputs/03_stringtie"
+gffread_dir: "{species}/03_outputs/04_gffread"
+feelnc_dir: "{species}/03_outputs/05_FEELnc"
+cpat_dir: "{species}/03_outputs/06_cpat"
+lncboost_dir: "{species}/03_outputs/07_lncBoost"
+lncfinder_dir: "{species}/03_outputs/08_lncFinder"
+diamond_dir: "{species}/03_outputs/09_diamond"
+final_dir: "{species}/03_outputs/10_final"
+verify_dir: "{species}/03_outputs/11_verify"
+star_index_dir: "{species}/01_inputs/{prefix}_indexed"
+
+# External model/database files.
+cpat_hexamer: "/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv"
+cpat_logit: "scripts/Plant.logit.v2.RData"
+
+plant_lncboost_script_dir: "/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script"
+plant_lncboost_model: "/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb"
+
+# DIAMOND builds uniprot_out.dmnd from the downloaded SwissProt fasta.
+diamond_db: "resources/uniprot/uniprot_out.dmnd"
+uniprot_fasta: "resources/uniprot/uniprot_sprot.fasta"
+
+# Truth-set evaluation disabled for the initial functional test.
+cluster_truth: false
+run_truth_alignment: false
+truth_input_fasta: "truth_data/{species}/{prefix}_PLncDB_lncRNA.fa"
+truth_clustered_fasta: "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa"
+truth_fasta: "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa"
+
+# Tool parameters (tuned for Arabidopsis TAIR10, ~120 Mb genome, 50 bp reads).
+star_sjdb_overhang: 49
+star_genome_sa_index_nbases: 12
+stringtie_min_transcript_length: 200
+stringtie_min_junction_coverage: 2
+feelnc_min_size: 200
+feelnc_monoex: -1
+cpat_coding_probability_cutoff: 0.46
+lncboost_threshold: 0.5
+diamond_evalue: "1e-5"
+minimap_identity_cutoff: 0.95
+cdhit_identity: 0.90
+
+threads:
+  prefetch: 8
+  fastp: 8
+  star_index: 8
+  star_align: 8
+  samtools_index: 1
+  stringtie_assemble: 8
+  stringtie_merge: 4
+  feelnc_filter: 16
+  cpat: 8
+  lncboost: 8
+  lncfinder: 16
+  diamond: 16
+  intersect: 4
+  gffread: 2
+  minimap2: 8
+  cdhit: 8
+
+# One SIF per software/step.
+containers:
+  sra_tools: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/sra_tools.sif"
+  fastp: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/fastp.sif"
+  star: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/star.sif"
+  samtools: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/samtools.sif"
+  stringtie: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/stringtie.sif"
+  gffread: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/gffread.sif"
+  feelnc: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/feelnc.sif"
+  cpat: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/cpat_plant.sif"
+  lncboost: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/plant_lnc_boost.sif"
+  lncfinder: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/lncfinder.sif"
+  diamond: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/diamond.sif"
+  intersect: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/intersect_ids.sif"
+  minimap2: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/minimap2.sif"
+  cd_hit: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/cd_hit.sif"
+  python_utils: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/python_utils.sif"

@@ -1,0 +1,7 @@
+chr1	test	transcript	1	240	.	+	.	gene_id "MSTRG.1"; transcript_id "MSTRG.1.1";
+chr1	test	exon	1	240	.	+	.	gene_id "MSTRG.1"; transcript_id "MSTRG.1.1";
+chr1	test	transcript	300	560	.	+	.	gene_id "MSTRG.2"; transcript_id "MSTRG.2.1";
+chr1	test	exon	300	560	.	+	.	gene_id "MSTRG.2"; transcript_id "MSTRG.2.1";
+chr1	test	transcript	700	960	.	+	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1";
+chr1	test	exon	700	960	.	+	.	gene_id "MSTRG.3"; transcript_id "MSTRG.3.1";
+

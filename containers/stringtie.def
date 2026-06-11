@@ -1,0 +1,14 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.10
+
+%post
+    micromamba install -y -n base -c conda-forge -c bioconda stringtie=2.2.1
+    micromamba clean -a -y
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C
+
+%runscript
+    exec stringtie "$@"
+
