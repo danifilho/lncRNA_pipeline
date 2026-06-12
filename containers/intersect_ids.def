@@ -1,8 +1,18 @@
 Bootstrap: docker
-From: rocker/r-ver:4.3.3
+From: rocker/tidyverse:4.3.3
+
+# Runs the upstream prediction_insersection.sh verbatim (tidyverse + VennDiagram).
+
+%post
+    R -e "install.packages(c('VennDiagram','RColorBrewer','scales'), repos='https://cloud.r-project.org')"
+    git clone --depth 1 https://github.com/xuechantian/Plant-LncRNA-pipeline-v2.git /opt/Plant-LncRNA-pipeline-v2
 
 %environment
     export LC_ALL=C
+
+%test
+    R -e "library(tidyverse); library(VennDiagram); library(RColorBrewer); library(scales)"
+    test -f /opt/Plant-LncRNA-pipeline-v2/Script/prediction_insersection.sh
 
 %runscript
     exec Rscript "$@"

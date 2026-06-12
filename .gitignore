@@ -49,3 +49,13 @@ iwgc_ath_*.log
 # ...but never the generated smoke output or stray OS files inside fixtures
 tests/smoke/out/
 tests/smoke/**/.DS_Store
+
+# pre-refactor backups
+*.star_era
+# stray tool artifacts if run from repo root
+Fourier*_lncRNA.csv
+ORF_lncRNA.csv
+fastp.html
+fastp.json
+*.feelncclassifier.log
+/-

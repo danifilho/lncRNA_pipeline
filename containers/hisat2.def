@@ -1,0 +1,18 @@
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.10
+
+%post
+    micromamba install -y -n base -c conda-forge -c bioconda hisat2=2.2.1 samtools=1.20
+    micromamba clean -a -y
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C
+
+%test
+    hisat2 --version
+    hisat2-build --version
+    samtools --version | head -1
+
+%runscript
+    exec hisat2 "$@"

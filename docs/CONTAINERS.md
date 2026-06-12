@@ -1,67 +1,56 @@
 # Container images
 
-Every step of the pipeline runs inside its own [Singularity/Apptainer](https://apptainer.org/)
-image, defined by a `.def` file in [`../containers/`](../containers). One tool per image keeps
-software environments isolated and the whole pipeline reproducible.
+Every step runs in its own [Singularity/Apptainer](https://apptainer.org/) image, defined by a
+`.def` file in [`../containers/`](../containers). One tool per image keeps environments isolated
+and the pipeline reproducible.
 
 ## Building
 
 ```bash
-# Build all images into containers/images/
-scripts/build_singularity_images.sh
-
-# Build only some
-scripts/build_singularity_images.sh fastp star stringtie
-
-# On clusters that require a remote (Sylabs) builder
-scripts/build_singularity_images.sh --remote
+scripts/build_singularity_images.sh                 # all images -> containers/images/
+scripts/build_singularity_images.sh hisat2 lncfinder intersect_ids   # a subset
+scripts/build_singularity_images.sh --remote        # remote (Sylabs) builder
 ```
 
-The build script picks `apptainer` (or `singularity`) automatically and writes
-`containers/images/<name>.sif`. The resulting images (~3 GB total) are **git-ignored** — they
-are build artifacts, fully reproducible from the `.def` files.
-
-> The build node needs **internet access**: the `cpat_plant`, `plant_lnc_boost`, `feelnc` and
-> `lncfinder` images clone upstream repositories / download source at build time.
+Images (~3.5 GB total) are **git-ignored** — rebuild them from the `.def` files. The build node
+needs **internet**: `cpat_plant`, `plant_lnc_boost`, `feelnc`, `lncfinder` and `intersect_ids`
+clone upstream repos / download source at build time.
 
 ## Image reference
 
-| Image | Definition | Base image | Key software (pinned) | Provides | Rules |
-|-------|-----------|------------|-----------------------|----------|-------|
-| `sra_tools.sif` | `sra_tools.def` | micromamba 1.5.10 | sra-tools 3.1.1, pigz | `prefetch`, `fasterq-dump` | prefetch_sra |
-| `fastp.sif` | `fastp.def` | micromamba 1.5.10 | fastp 0.23.4 | `fastp` | fastp |
-| `star.sif` | `star.def` | micromamba 1.5.10 | STAR 2.7.11b | `STAR` | star_genome_generate, star_align |
-| `samtools.sif` | `samtools.def` | micromamba 1.5.10 | samtools 1.20 | `samtools` | samtools_index |
-| `stringtie.sif` | `stringtie.def` | micromamba 1.5.10 | StringTie 2.2.1 | `stringtie` | stringtie_assemble, stringtie_merge |
-| `gffread.sif` | `gffread.def` | micromamba 1.5.10 | gffread 0.12.9 | `gffread` | extract_candidates, final_lncRNA_fasta |
-| `diamond.sif` | `diamond.def` | micromamba 1.5.10 | DIAMOND 2.1.8 | `diamond` | diamond_makedb, diamond_blastx |
-| `minimap2.sif` | `minimap2.def` | micromamba 1.5.10 | minimap2 2.28 | `minimap2` | minimap2_truth_alignment |
-| `cd_hit.sif` | `cd_hit.def` | micromamba 1.5.10 | cd-hit 4.8.1 | `cd-hit` | truth_cdhit |
-| `python_utils.sif` | `python_utils.def` | python 3.11-slim | Python 3.11 | `python3` | final_lncRNA_gtf |
-| `intersect_ids.sif` | `intersect_ids.def` | rocker/r-ver 4.3.3 | base R 4.3.3 | `Rscript` | intersect_predictions |
-| `feelnc.sif` | `feelnc.def` | ubuntu 22.04 | FEELnc (git `tderrien/FEELnc`) + BioPerl | `FEELnc_filter.pl`, `FEELnc_classifier.pl` | feelnc_filter, feelnc_classifier |
-| `cpat_plant.sif` | `cpat_plant.def` | ubuntu 18.04 | CPAT 1.2.4 (Python 2) + Plant-LncRNA-pipeline-v2 | `cpat.py` + `Plant_Hexamer.tsv` | cpat |
-| `plant_lnc_boost.sif` | `plant_lnc_boost.def` | python 3.9-slim | CatBoost, scikit-learn, BioPython + Plant-LncRNA-pipeline-v2 | `Feature_extraction.py`, `PlantLncBoost_prediction.py` + `.cb` model | lncboost |
-| `lncfinder.sif` | `lncfinder.def` | ubuntu 22.04 | R + LncFinder, seqinr, e1071 + ViennaRNA 2.7.2 | `Rscript`, `RNAfold` | lncfinder |
+| Image | Base | Key software | Bundled upstream assets | Rules |
+|-------|------|--------------|-------------------------|-------|
+| `hisat2.sif` | micromamba | HISAT2 2.2.1, samtools 1.20 | — | hisat2_index, hisat2_align |
+| `fastp.sif` | micromamba | fastp 0.23.4 | — | fastp |
+| `stringtie.sif` | micromamba | StringTie 2.2.1 | — | stringtie_assemble/merge |
+| `gffread.sif` | micromamba | gffread 0.12.9 | — | extract_candidates, final_lncRNA_gtf/fasta |
+| `diamond.sif` | micromamba | DIAMOND 2.1.8 | — | diamond_makedb/blastx |
+| `feelnc.sif` | ubuntu 22.04 | FEELnc (git) + BioPerl | FEELnc scripts | feelnc_filter, feelnc_classifier |
+| `cpat_plant.sif` | ubuntu 18.04 | CPAT 1.2.4 (Python 2) + R 3.4 | Plant_Hexamer.tsv | cpat |
+| `plant_lnc_boost.sif` | python 3.9 | CatBoost, scikit-learn, BioPython | PlantLncBoost scripts + `.cb` model + `prediction_insersection.sh` | lncboost |
+| `lncfinder.sif` | ubuntu 22.04 | R + LncFinder, seqinr, e1071 | **Plant_model.rda + training FASTAs** (v1 repo) | lncfinder |
+| `intersect_ids.sif` | rocker/tidyverse 4.3.3 | R + tidyverse + VennDiagram | `prediction_insersection.sh` | intersect_predictions |
+| `sra_tools.sif` | micromamba | sra-tools 3.1.1, pigz | — | prefetch_sra |
+| `samtools.sif` | micromamba | samtools 1.20 | — | (helper) |
+| `minimap2.sif` | micromamba | minimap2 2.28 | — | (optional truth eval) |
+| `cd_hit.sif` | micromamba | cd-hit 4.8.1 | — | (optional truth clustering) |
+| `python_utils.sif` | python 3.11-slim | Python 3 | — | (helper) |
 
-## Notes on the model containers
+## Containers built / changed to match upstream
 
-- **`cpat_plant`** — CPAT 1.2.4 runs under Python 2 (legacy). The image clones
-  `Plant-LncRNA-pipeline-v2` into `/opt`, providing the plant-trained hexamer table
-  (`/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv`). The logit model
-  (`scripts/Plant.logit.v2.RData`) is supplied from this repository via `config.cpat_logit`.
-- **`plant_lnc_boost`** — bundles the CatBoost model
-  (`/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb`) and the feature-extraction /
-  prediction scripts under `/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script/`.
-- **`lncfinder`** — compiles ViennaRNA 2.7.2 from source to provide `RNAfold`, plus the R
-  packages `LncFinder`, `seqinr`, `e1071`. The pipeline uses the built-in `wheat` plant SVM
-  model with secondary-structure features.
-- **`feelnc`** — installs the BioPerl stack required by FEELnc and symlinks
-  `FEELnc_filter.pl` / `FEELnc_classifier.pl` onto `PATH`.
+- **`hisat2.sif` (new)** — upstream aligns with HISAT2 (not STAR). Includes samtools so the rule
+  pipes `hisat2 … | samtools sort` into one sorted BAM, identical to `hisat2 -S x.sam; samtools
+  view -b x.sam | samtools sort`.
+- **`lncfinder.sif` (rebuilt)** — clones the predecessor repo
+  `Plant-LncRNA-pipline`, which ships `Model/Plant_model.rda` (the plant SVM) and
+  `example_data/training_{mRNA,lncRNA}.fasta` (for `make_frequencies`). LncFinder-plant uses
+  `SS.features = FALSE`, so no ViennaRNA/RNAfold is needed.
+- **`intersect_ids.sif` (rebuilt)** — `rocker/tidyverse` + `VennDiagram`, so the upstream
+  `prediction_insersection.sh` runs verbatim (the repo vendors a copy with one cosmetic Venn
+  compatibility line — see README → Fidelity).
 
-## Storage tip (HPC)
+## HPC storage tip
 
-The `.sif` images are large. On clusters with a tight `$HOME` quota, keep them on scratch and
-point the `containers:` paths in the config there, e.g.
-`/mnt/scratch/<user>/iwgc_lncRNA/containers/images/*.sif`, and add that directory to
-`APPTAINER_BINDPATH`.
+`.sif` images are large; on clusters with a tight `$HOME` quota keep them on scratch and point the
+`containers:` paths there (e.g. `/mnt/scratch/<user>/iwgc_lncRNA/containers/images/*.sif`), adding
+that directory to `APPTAINER_BINDPATH`.

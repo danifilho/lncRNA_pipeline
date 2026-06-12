@@ -1,3 +1,8 @@
+# IWGC lncRNA pipeline -- faithful containerized re-implementation of
+# Plant-LncRNA-pipeline-v2 (Tian et al.). Every step runs the same tool /
+# command as the upstream pipeline; the only differences are Singularity
+# containers + Snakemake orchestration.
+
 configfile: "../config/config.yaml"
 
 from pathlib import Path
@@ -8,6 +13,7 @@ import re
 SPECIES = config["species"]
 PREFIX = config.get("prefix", SPECIES)
 DOWNLOAD_SRA = bool(config.get("download_sra", False))
+STRAND_SPECIFIC = bool(config.get("strand_specific", False))
 
 
 def fmt(value):
@@ -32,12 +38,11 @@ def container(name):
 def read_samples():
     configured = config.get("samples")
     if configured:
-        return [str(sample).strip() for sample in configured if str(sample).strip()]
-
+        return [str(s).strip() for s in configured if str(s).strip()]
     sra_file = cfg_path("sra_accessions")
     if sra_file and os.path.exists(sra_file):
         with open(sra_file) as handle:
-            return [line.strip() for line in handle if line.strip() and not line.startswith("#")]
+            return [l.strip() for l in handle if l.strip() and not l.startswith("#")]
     return []
 
 
@@ -47,10 +52,12 @@ SRA_LIST = cfg_path("sra_accessions", "{species}/01_inputs/{species}_sra_IDs.txt
 RAW_DIR = cfg_path("raw_fastq_dir", "{species}/01_inputs/raw_fastq")
 REFERENCE_FASTA = cfg_path("reference_fasta", "{species}/01_inputs/{species}.chromosomes.fa")
 ANNOTATION_GTF = cfg_path("annotation_gtf", "{species}/01_inputs/{species}_mRNA.gtf")
-STAR_INDEX_DIR = cfg_path("star_index_dir", "{species}/01_inputs/{prefix}_indexed")
+
+HISAT2_INDEX_DIR = cfg_path("hisat2_index_dir", "{species}/01_inputs/{prefix}_hisat2_index")
+HISAT2_INDEX_PREFIX = f"{HISAT2_INDEX_DIR}/{PREFIX}"
 
 FASTP_DIR = cfg_path("fastp_dir", "{species}/03_outputs/01_fastp")
-STAR_DIR = cfg_path("star_dir", "{species}/03_outputs/02_STAR")
+ALIGN_DIR = cfg_path("align_dir", "{species}/03_outputs/02_hisat2")
 STRINGTIE_DIR = cfg_path("stringtie_dir", "{species}/03_outputs/03_stringtie")
 GFFREAD_DIR = cfg_path("gffread_dir", "{species}/03_outputs/04_gffread")
 FEELNC_DIR = cfg_path("feelnc_dir", "{species}/03_outputs/05_FEELnc")
@@ -59,58 +66,59 @@ LNCBOOST_DIR = cfg_path("lncboost_dir", "{species}/03_outputs/07_lncBoost")
 LNCFINDER_DIR = cfg_path("lncfinder_dir", "{species}/03_outputs/08_lncFinder")
 DIAMOND_DIR = cfg_path("diamond_dir", "{species}/03_outputs/09_diamond")
 FINAL_DIR = cfg_path("final_dir", "{species}/03_outputs/10_final")
-VERIFY_DIR = cfg_path("verify_dir", "{species}/03_outputs/11_verify")
 
 ASSEMBLY_DIR = f"{STRINGTIE_DIR}/SRR_assemblies"
-MERGED_GTF = f"{STRINGTIE_DIR}/{PREFIX}_denovo_trans.gtf"
-CANDIDATE_GTF = f"{GFFREAD_DIR}/{PREFIX}_candidates.gtf"
-CANDIDATE_FASTA = f"{GFFREAD_DIR}/{PREFIX}_candidates.fasta"
-CANDIDATE_IDS = f"{GFFREAD_DIR}/{PREFIX}_candidates.txt"
+MERGED_GTF = f"{STRINGTIE_DIR}/{PREFIX}_merge.gtf"
+CANDIDATE_GTF = f"{GFFREAD_DIR}/candidate_transcript.gtf"
+CANDIDATE_FASTA = f"{GFFREAD_DIR}/candidate_transcript.fasta"
+CANDIDATE_IDS = f"{GFFREAD_DIR}/candidate_transcript.txt"
 
-FEELNC_GTF = f"{FEELNC_DIR}/{PREFIX}_FEELnc.gtf"
-CPAT_OUTPUT = f"{CPAT_DIR}/{PREFIX}_cpat.output"
-LNCBOOST_FEATURES = f"{LNCBOOST_DIR}/{PREFIX}_features.csv"
-LNCBOOST_PREDICTIONS = f"{LNCBOOST_DIR}/{PREFIX}_predictions.txt"
-LNCFINDER_STRUCTURES = f"{LNCFINDER_DIR}/folded_structures.txt"
-LNCFINDER_RESULTS = f"{LNCFINDER_DIR}/{PREFIX}_lncFinder_wheat_model_results.csv"
-DIAMOND_OUTPUT = f"{DIAMOND_DIR}/{PREFIX}_diamond_out.txt"
+FEELNC_GTF = f"{FEELNC_DIR}/candidate_lncRNA.gtf"
+FEELNC_CANDIDATE_TXT = f"{FEELNC_DIR}/candidate_lncRNA.txt"
+CPAT_OUTPUT = f"{CPAT_DIR}/CPAT_plant.output"
+LNCBOOST_FEATURES = f"{LNCBOOST_DIR}/PlantLncBoost_feature.csv"
+LNCBOOST_PREDICTIONS = f"{LNCBOOST_DIR}/PlantLncBoost_prediction.csv"
+LNCFINDER_RESULTS = f"{LNCFINDER_DIR}/plant-lncFinder.txt"
+DIAMOND_OUTPUT = f"{DIAMOND_DIR}/uniprotoutput.txt"
 
-FINAL_IDS = f"{FINAL_DIR}/{PREFIX}_final_ids.txt"
-INTERSECTION_SUMMARY = f"{FINAL_DIR}/{PREFIX}_intersection_summary.csv"
-FINAL_GTF = f"{FINAL_DIR}/{PREFIX}_lncRNA.gtf"
-FINAL_FASTA = f"{FINAL_DIR}/{PREFIX}_lncRNA.fasta"
-FEELNC_CLASSES = f"{FINAL_DIR}/{PREFIX}_lncRNA_classes.txt"
+FINAL_IDS = f"{FINAL_DIR}/Final_lncRNA_results.txt"
+VENN_PDF = f"{FINAL_DIR}/Venn_pred_lncRNA.pdf"
+FINAL_GTF = f"{FINAL_DIR}/lncRNA.gtf"
+FINAL_FASTA = f"{FINAL_DIR}/lncRNA.fasta"
+FEELNC_CLASSES = f"{FINAL_DIR}/lncRNA_classes.txt"
 
 DIAMOND_DB = cfg_path("diamond_db", "resources/uniprot/uniprot_out.dmnd")
 UNIPROT_FASTA = cfg_path("uniprot_fasta", "resources/uniprot/uniprot_sprot.fasta")
 
-TRUTH_INPUT_FASTA = cfg_path("truth_input_fasta", "truth_data/{species}/{prefix}_PLncDB_lncRNA.fa")
-TRUTH_CLUSTERED_FASTA = cfg_path("truth_clustered_fasta", "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa")
-TRUTH_FASTA = TRUTH_CLUSTERED_FASTA if bool(config.get("cluster_truth", False)) else cfg_path("truth_fasta", "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa")
-VERIFY_PAF = f"{VERIFY_DIR}/{PREFIX}_truth_vs_pred.paf"
-VERIFY_METRICS = f"{VERIFY_DIR}/{PREFIX}_truth_vs_pred.metrics.txt"
+# Upstream model / script locations baked into the containers.
+CPAT_HEXAMER = cfg_path("cpat_hexamer", "/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv")
+CPAT_LOGIT = cfg_path("cpat_logit", "/opt/Plant-LncRNA-pipeline-v2/Model/Plant.logit.RData")
+LNCBOOST_SCRIPT_DIR = cfg_path("plant_lncboost_script_dir", "/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script")
+LNCBOOST_MODEL = cfg_path("plant_lncboost_model", "/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb")
+INTERSECT_SCRIPT = cfg_path("intersect_script", "/opt/Plant-LncRNA-pipeline-v2/Script/prediction_insersection.sh")
+
+RNA_STRANDNESS = "--rna-strandness RF" if STRAND_SPECIFIC else ""
+STRINGTIE_RF = "--rf" if STRAND_SPECIFIC else ""
 
 
 def raw_fastq_inputs(wildcards):
     sample = wildcards.sample
     candidates = [
         [f"{RAW_DIR}/{sample}_1.fastq.gz", f"{RAW_DIR}/{sample}_2.fastq.gz"],
-        [f"{RAW_DIR}/{sample}_1.fastq"],
-        [f"{RAW_DIR}/{sample}_1.fastq.gz"],
-        [f"{RAW_DIR}/{sample}.fastq"],
+        [f"{RAW_DIR}/{sample}_1.fastq", f"{RAW_DIR}/{sample}_2.fastq"],
         [f"{RAW_DIR}/{sample}.fastq.gz"],
+        [f"{RAW_DIR}/{sample}.fastq"],
+        [f"{RAW_DIR}/{sample}_1.fastq.gz"],
+        [f"{RAW_DIR}/{sample}_1.fastq"],
     ]
     for files in candidates:
-        if all(os.path.exists(path) for path in files):
+        if all(os.path.exists(p) for p in files):
             return files
-
     if DOWNLOAD_SRA:
         return f"{RAW_DIR}/.prefetch/{sample}.done"
-
     raise ValueError(
-        f"Raw FASTQ files for sample '{sample}' were not found in {RAW_DIR}. "
-        "Set download_sra: true or add files named sample_1/sample_2.fastq(.gz), "
-        "sample_1.fastq(.gz), or sample.fastq(.gz)."
+        f"Raw FASTQ for sample '{sample}' not found in {RAW_DIR}. "
+        "Set download_sra: true or provide sample[_1/_2].fastq(.gz)."
     )
 
 
@@ -118,16 +126,7 @@ def diamond_db_prefix(path):
     return re.sub(r"\.dmnd$", "", str(path))
 
 
-primary_targets = [
-    FINAL_IDS,
-    INTERSECTION_SUMMARY,
-    FINAL_GTF,
-    FINAL_FASTA,
-    FEELNC_CLASSES,
-]
-
-if bool(config.get("run_truth_alignment", False)):
-    primary_targets.extend([VERIFY_PAF, VERIFY_METRICS])
+primary_targets = [FINAL_IDS, FINAL_GTF, FINAL_FASTA, FEELNC_CLASSES]
 
 
 rule all:
@@ -149,24 +148,19 @@ rule prefetch_sra:
         set -euo pipefail
         mkdir -p {params.raw_dir} {params.raw_dir}/.prefetch
         prefetch {wildcards.sample} --max-size 30G
-        fasterq-dump {wildcards.sample} \
-            --outdir {params.raw_dir} \
-            --split-files \
-            --skip-technical \
-            --threads {threads} \
-            --temp /tmp
+        fasterq-dump {wildcards.sample} --outdir {params.raw_dir} \
+            --split-files --skip-technical --threads {threads} --temp /tmp
         pigz -p {threads} -f {params.raw_dir}/{wildcards.sample}*.fastq
         touch {output.done}
         """
 
 
+# 5.2 Data filtering / QC -- fastp (faithful: plain -i/-o)
 rule fastp:
     input:
         raw=raw_fastq_inputs
     output:
-        done=f"{FASTP_DIR}/.done/{{sample}}.done",
-        html=f"{FASTP_DIR}/{{sample}}_fastp.html",
-        json=f"{FASTP_DIR}/{{sample}}_fastp.json"
+        done=f"{FASTP_DIR}/.done/{{sample}}.done"
     params:
         raw_dir=RAW_DIR,
         out_dir=FASTP_DIR
@@ -178,173 +172,108 @@ rule fastp:
         r"""
         set -euo pipefail
         mkdir -p {params.out_dir} {params.out_dir}/.done
-
-        if [ -f "{params.raw_dir}/{wildcards.sample}_1.fastq.gz" ] && [ -f "{params.raw_dir}/{wildcards.sample}_2.fastq.gz" ]; then
-            fastp \
-              -i "{params.raw_dir}/{wildcards.sample}_1.fastq.gz" \
-              -I "{params.raw_dir}/{wildcards.sample}_2.fastq.gz" \
-              -o "{params.out_dir}/{wildcards.sample}_1_trim.fastq.gz" \
-              -O "{params.out_dir}/{wildcards.sample}_2_trim.fastq.gz" \
-              --detect_adapter_for_pe \
-              --thread {threads} -x -g \
-              --html {output.html} \
-              --json {output.json}
-        elif [ -f "{params.raw_dir}/{wildcards.sample}_1.fastq" ]; then
-            fastp \
-              -i "{params.raw_dir}/{wildcards.sample}_1.fastq" \
-              -o "{params.out_dir}/{wildcards.sample}_trim.fastq.gz" \
-              --thread {threads} -x -g \
-              --html {output.html} \
-              --json {output.json}
-        elif [ -f "{params.raw_dir}/{wildcards.sample}_1.fastq.gz" ]; then
-            fastp \
-              -i "{params.raw_dir}/{wildcards.sample}_1.fastq.gz" \
-              -o "{params.out_dir}/{wildcards.sample}_trim.fastq.gz" \
-              --thread {threads} -x -g \
-              --html {output.html} \
-              --json {output.json}
-        elif [ -f "{params.raw_dir}/{wildcards.sample}.fastq" ]; then
-            fastp \
-              -i "{params.raw_dir}/{wildcards.sample}.fastq" \
-              -o "{params.out_dir}/{wildcards.sample}_trim.fastq.gz" \
-              --thread {threads} -x -g \
-              --html {output.html} \
-              --json {output.json}
-        elif [ -f "{params.raw_dir}/{wildcards.sample}.fastq.gz" ]; then
-            fastp \
-              -i "{params.raw_dir}/{wildcards.sample}.fastq.gz" \
-              -o "{params.out_dir}/{wildcards.sample}_trim.fastq.gz" \
-              --thread {threads} -x -g \
-              --html {output.html} \
-              --json {output.json}
+        R1PE_A="{params.raw_dir}/{wildcards.sample}_1.fastq.gz"
+        R1PE_B="{params.raw_dir}/{wildcards.sample}_1.fastq"
+        if {{ [ -f "$R1PE_A" ] || [ -f "$R1PE_B" ]; }} && \
+           {{ [ -f "{params.raw_dir}/{wildcards.sample}_2.fastq.gz" ] || [ -f "{params.raw_dir}/{wildcards.sample}_2.fastq" ]; }}; then
+            R1=$([ -f "$R1PE_A" ] && echo "$R1PE_A" || echo "$R1PE_B")
+            R2=$([ -f "{params.raw_dir}/{wildcards.sample}_2.fastq.gz" ] && echo "{params.raw_dir}/{wildcards.sample}_2.fastq.gz" || echo "{params.raw_dir}/{wildcards.sample}_2.fastq")
+            fastp -i "$R1" -I "$R2" \
+              -o "{params.out_dir}/{wildcards.sample}_1_clean.fastq.gz" \
+              -O "{params.out_dir}/{wildcards.sample}_2_clean.fastq.gz" \
+              --thread {threads}
         else
-            echo "No raw FASTQ files found for {wildcards.sample} in {params.raw_dir}" >&2
-            exit 1
+            if [ -f "{params.raw_dir}/{wildcards.sample}.fastq.gz" ]; then R1="{params.raw_dir}/{wildcards.sample}.fastq.gz";
+            elif [ -f "{params.raw_dir}/{wildcards.sample}.fastq" ]; then R1="{params.raw_dir}/{wildcards.sample}.fastq";
+            elif [ -f "$R1PE_A" ]; then R1="$R1PE_A";
+            else R1="$R1PE_B"; fi
+            fastp -i "$R1" -o "{params.out_dir}/{wildcards.sample}_clean.fastq.gz" --thread {threads}
         fi
-
         touch {output.done}
         """
 
 
-rule star_genome_generate:
+# 6. HISAT2 reference index
+rule hisat2_index:
     input:
-        fasta=REFERENCE_FASTA,
-        annotation=ANNOTATION_GTF
+        fasta=REFERENCE_FASTA
     output:
-        index=directory(STAR_INDEX_DIR)
+        done=f"{HISAT2_INDEX_DIR}/.index.done"
     params:
-        overhang=config.get("star_sjdb_overhang", 99),
-        sa_index=config.get("star_genome_sa_index_nbases", 13)
+        prefix=HISAT2_INDEX_PREFIX,
+        index_dir=HISAT2_INDEX_DIR
     threads:
-        cfg_threads("star_index", 8)
+        cfg_threads("hisat2_index", 8)
     container:
-        container("star")
+        container("hisat2")
     shell:
         r"""
         set -euo pipefail
-        rm -rf {output.index}
-        mkdir -p {output.index}
-        STAR \
-          --runMode genomeGenerate \
-          --runThreadN {threads} \
-          --genomeDir {output.index} \
-          --genomeFastaFiles {input.fasta} \
-          --sjdbGTFfile {input.annotation} \
-          --sjdbGTFtagExonParentTranscript transcript_id \
-          --sjdbOverhang {params.overhang} \
-          --genomeSAindexNbases {params.sa_index}
+        mkdir -p {params.index_dir}
+        hisat2-build -p {threads} {input.fasta} {params.prefix}
+        touch {output.done}
         """
 
 
-rule star_align:
+# 6. HISAT2 alignment -> sorted BAM (hisat2 | samtools sort, one container)
+rule hisat2_align:
     input:
         fastp_done=f"{FASTP_DIR}/.done/{{sample}}.done",
-        index=STAR_INDEX_DIR
+        index_done=f"{HISAT2_INDEX_DIR}/.index.done"
     output:
-        bam=f"{STAR_DIR}/{{sample}}_Aligned.sortedByCoord.out.bam"
+        bam=f"{ALIGN_DIR}/{{sample}}.bam"
     params:
+        prefix=HISAT2_INDEX_PREFIX,
         reads_dir=FASTP_DIR,
-        out_dir=STAR_DIR
+        out_dir=ALIGN_DIR,
+        strandness=RNA_STRANDNESS
     threads:
-        cfg_threads("star_align", 8)
+        cfg_threads("hisat2_align", 10)
     container:
-        container("star")
+        container("hisat2")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {params.out_dir}
-
-        if [ -f "{params.reads_dir}/{wildcards.sample}_1_trim.fastq.gz" ] && [ -f "{params.reads_dir}/{wildcards.sample}_2_trim.fastq.gz" ]; then
-            READS="{params.reads_dir}/{wildcards.sample}_1_trim.fastq.gz {params.reads_dir}/{wildcards.sample}_2_trim.fastq.gz"
-        elif [ -f "{params.reads_dir}/{wildcards.sample}_trim.fastq.gz" ]; then
-            READS="{params.reads_dir}/{wildcards.sample}_trim.fastq.gz"
+        if [ -f "{params.reads_dir}/{wildcards.sample}_1_clean.fastq.gz" ]; then
+            READS="-1 {params.reads_dir}/{wildcards.sample}_1_clean.fastq.gz -2 {params.reads_dir}/{wildcards.sample}_2_clean.fastq.gz"
         else
-            echo "No trimmed FASTQ files found for {wildcards.sample} in {params.reads_dir}" >&2
-            exit 1
+            READS="-U {params.reads_dir}/{wildcards.sample}_clean.fastq.gz"
         fi
-
-        STAR \
-          --runThreadN {threads} \
-          --genomeDir {input.index} \
-          --readFilesIn $READS \
-          --readFilesCommand zcat \
-          --outFileNamePrefix {params.out_dir}/{wildcards.sample}_ \
-          --outSAMtype BAM SortedByCoordinate \
-          --outSAMattrIHstart 0 \
-          --outSAMattributes NH HI AS nM NM \
-          --outSAMstrandField intronMotif
+        hisat2 --new-summary {params.strandness} -p {threads} \
+            -x {params.prefix} $READS \
+          | samtools sort -@ {threads} -o {output.bam} -
         """
 
 
-rule samtools_index:
-    input:
-        bam=f"{STAR_DIR}/{{sample}}_Aligned.sortedByCoord.out.bam"
-    output:
-        bai=f"{STAR_DIR}/{{sample}}_Aligned.sortedByCoord.out.bam.bai"
-    threads:
-        cfg_threads("samtools_index", 1)
-    container:
-        container("samtools")
-    shell:
-        "samtools index {input.bam}"
-
-
+# 7. StringTie per-sample assembly
 rule stringtie_assemble:
     input:
-        bam=f"{STAR_DIR}/{{sample}}_Aligned.sortedByCoord.out.bam",
-        bai=f"{STAR_DIR}/{{sample}}_Aligned.sortedByCoord.out.bam.bai",
+        bam=f"{ALIGN_DIR}/{{sample}}.bam",
         annotation=ANNOTATION_GTF
     output:
-        gtf=f"{ASSEMBLY_DIR}/{{sample}}_assembled.gtf"
+        gtf=f"{ASSEMBLY_DIR}/{{sample}}.gtf"
     params:
-        min_len=config.get("stringtie_min_transcript_length", 200),
-        min_junction=config.get("stringtie_min_junction_coverage", 2)
+        rf=STRINGTIE_RF
     threads:
-        cfg_threads("stringtie_assemble", 8)
+        cfg_threads("stringtie_assemble", 10)
     container:
         container("stringtie")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {ASSEMBLY_DIR}
-        stringtie \
-          {input.bam} \
-          -G {input.annotation} \
-          -p {threads} \
-          -m {params.min_len} \
-          -j {params.min_junction} \
-          -o {output.gtf}
+        stringtie -p {threads} {params.rf} -G {input.annotation} -o {output.gtf} {input.bam}
         """
 
 
+# 7. StringTie merge + candidate extraction
 rule stringtie_merge:
     input:
-        assemblies=expand(f"{ASSEMBLY_DIR}/{{sample}}_assembled.gtf", sample=SAMPLES),
+        assemblies=expand(f"{ASSEMBLY_DIR}/{{sample}}.gtf", sample=SAMPLES),
         annotation=ANNOTATION_GTF
     output:
         gtf=MERGED_GTF
-    params:
-        min_len=config.get("stringtie_min_transcript_length", 200)
     threads:
         cfg_threads("stringtie_merge", 4)
     container:
@@ -353,15 +282,7 @@ rule stringtie_merge:
         r"""
         set -euo pipefail
         mkdir -p {STRINGTIE_DIR}
-        if [ "{input.assemblies}" = "" ]; then
-            echo "No StringTie assemblies were provided. Check sra_accessions or samples in config." >&2
-            exit 1
-        fi
-        stringtie --merge \
-          -G {input.annotation} \
-          -m {params.min_len} \
-          -o {output.gtf} \
-          {input.assemblies}
+        stringtie --merge -G {input.annotation} -o {output.gtf} {input.assemblies}
         """
 
 
@@ -381,26 +302,21 @@ rule extract_candidates:
         r"""
         set -euo pipefail
         mkdir -p {GFFREAD_DIR}
-        awk '/transcript_id "MSTRG/ {{print}}' {input.gtf} > {output.gtf}
-        if [ ! -s {output.gtf} ]; then
-            : > {output.fasta}
-            : > {output.ids}
-            exit 0
-        fi
+        grep 'transcript_id "MSTRG' {input.gtf} > {output.gtf} || true
+        if [ ! -s {output.gtf} ]; then : > {output.fasta}; : > {output.ids}; exit 0; fi
         gffread -w {output.fasta} -g {input.fasta} {output.gtf}
-        grep '^>' {output.fasta} | sed 's/^>//' | sort -u > {output.ids}
+        grep '>' {output.fasta} | awk '{{print $1}}' | sed 's/>//g' | sort -u > {output.ids}
         """
 
 
+# 8.1 FEELnc filter (remove < 200 bp / overlapping mRNA) + ID list
 rule feelnc_filter:
     input:
         gtf=CANDIDATE_GTF,
         annotation=ANNOTATION_GTF
     output:
-        gtf=FEELNC_GTF
-    params:
-        monoex=config.get("feelnc_monoex", -1),
-        min_size=config.get("feelnc_min_size", 200)
+        gtf=FEELNC_GTF,
+        ids=FEELNC_CANDIDATE_TXT
     threads:
         cfg_threads("feelnc_filter", 20)
     container:
@@ -409,47 +325,54 @@ rule feelnc_filter:
         r"""
         set -euo pipefail
         mkdir -p {FEELNC_DIR}
-        if [ ! -s {input.gtf} ]; then
-            : > {output.gtf}
-            exit 0
-        fi
-        FEELnc_filter.pl \
-          -i {input.gtf} \
-          -a {input.annotation} \
-          --monoex={params.monoex} \
-          -s {params.min_size} \
-          -p {threads} > {output.gtf}
+        if [ ! -s {input.gtf} ]; then : > {output.gtf}; : > {output.ids}; exit 0; fi
+        FEELnc_filter.pl -i {input.gtf} -a {input.annotation} --monoex=-1 -s 200 -p {threads} > {output.gtf}
+        cut -d ";" -f 2 {output.gtf} | sed 's/ transcript_id //g' | sed 's/"//g' | sort -u > {output.ids}
         """
 
 
+# 8.4 CPAT-plant (Plant_Hexamer + Plant.logit.RData)
 rule cpat:
     input:
-        fasta=CANDIDATE_FASTA,
-        logit=cfg_path("cpat_logit", "scripts/Plant.logit.v2.RData")
+        fasta=CANDIDATE_FASTA
     output:
         cpat=CPAT_OUTPUT
     params:
-        hexamer=cfg_path("cpat_hexamer", "/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv")
+        hexamer=CPAT_HEXAMER,
+        logit=CPAT_LOGIT
     threads:
-        cfg_threads("cpat", 16)
+        cfg_threads("cpat", 8)
     container:
         container("cpat")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {CPAT_DIR}
-        if [ ! -s {input.fasta} ]; then
-            printf 'seq_ID\tmRNA\tORF\tFickett\tHexamer\tcoding_prob\n' > {output.cpat}
-            exit 0
-        fi
-        cpat.py \
-          -x {params.hexamer} \
-          -d {input.logit} \
-          -g {input.fasta} \
-          -o {output.cpat}
+        if [ ! -s {input.fasta} ]; then printf 'mRNA_size\tORF_size\tFickett_score\tHexamer_score\tcoding_prob\n' > {output.cpat}; exit 0; fi
+        cpat.py -x {params.hexamer} -d {params.logit} -g {input.fasta} -o {output.cpat}
         """
 
 
+# 8.3 LncFinder-plant (make_frequencies + Plant_model.rda, SS.features = FALSE)
+rule lncfinder:
+    input:
+        fasta=CANDIDATE_FASTA,
+        runner="workflow/scripts/lncFinder.R"
+    output:
+        results=LNCFINDER_RESULTS
+    threads:
+        cfg_threads("lncfinder", 8)
+    container:
+        container("lncfinder")
+    shell:
+        r"""
+        set -euo pipefail
+        mkdir -p {LNCFINDER_DIR}
+        Rscript {input.runner} --input-fasta {input.fasta} --output-txt {output.results} --threads {threads}
+        """
+
+
+# 8.2 PlantLncBoost
 rule lncboost:
     input:
         fasta=CANDIDATE_FASTA
@@ -457,62 +380,23 @@ rule lncboost:
         features=LNCBOOST_FEATURES,
         predictions=LNCBOOST_PREDICTIONS
     params:
-        script_dir=cfg_path("plant_lncboost_script_dir", "/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script"),
-        model=cfg_path("plant_lncboost_model", "/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb"),
-        threshold=config.get("lncboost_threshold", 0.5)
+        script_dir=LNCBOOST_SCRIPT_DIR,
+        model=LNCBOOST_MODEL
     threads:
-        cfg_threads("lncboost", 20)
+        cfg_threads("lncboost", 8)
     container:
         container("lncboost")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {LNCBOOST_DIR}
-        if [ ! -s {input.fasta} ]; then
-            printf 'ID\tPredicted_label\tProbability\n' > {output.predictions}
-            : > {output.features}
-            exit 0
-        fi
-        python3 {params.script_dir}/Feature_extraction.py \
-          -i {input.fasta} \
-          -o {output.features}
-        python3 {params.script_dir}/PlantLncBoost_prediction.py \
-          -i {output.features} \
-          -m {params.model} \
-          -o {output.predictions} \
-          -t {params.threshold}
+        if [ ! -s {input.fasta} ]; then printf 'id\tPredicted_label\n' > {output.predictions}; : > {output.features}; exit 0; fi
+        python3 {params.script_dir}/Feature_extraction.py -i {input.fasta} -o {output.features}
+        python3 {params.script_dir}/PlantLncBoost_prediction.py -i {output.features} -m {params.model} -t 0.5 -o {output.predictions}
         """
 
 
-rule lncfinder:
-    input:
-        fasta=CANDIDATE_FASTA,
-        runner="workflow/scripts/lncFinder.R"
-    output:
-        structures=LNCFINDER_STRUCTURES,
-        results=LNCFINDER_RESULTS
-    threads:
-        cfg_threads("lncfinder", 32)
-    container:
-        container("lncfinder")
-    shell:
-        r"""
-        set -euo pipefail
-        mkdir -p {LNCFINDER_DIR}
-        if [ ! -s {input.fasta} ]; then
-            printf '"ID","Pred"\n' > {output.results}
-            : > {output.structures}
-            exit 0
-        fi
-        RNAfold --noPS --jobs={threads} < {input.fasta} > {output.structures}
-        Rscript {input.runner} \
-          --input-fasta {input.fasta} \
-          --fold-output {output.structures} \
-          --output-csv {output.results} \
-          --threads {threads}
-        """
-
-
+# 8.5 DIAMOND vs UniProt (plain blastx, faithful)
 rule diamond_makedb:
     input:
         fasta=UNIPROT_FASTA
@@ -521,7 +405,7 @@ rule diamond_makedb:
     params:
         db_prefix=lambda wildcards, output: diamond_db_prefix(output.db)
     threads:
-        cfg_threads("diamond", 32)
+        cfg_threads("diamond", 16)
     container:
         container("diamond")
     shell:
@@ -538,47 +422,34 @@ rule diamond_blastx:
         db=DIAMOND_DB
     output:
         out=DIAMOND_OUTPUT
-    params:
-        evalue=config.get("diamond_evalue", "1e-5")
     threads:
-        cfg_threads("diamond", 32)
+        cfg_threads("diamond", 16)
     container:
         container("diamond")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {DIAMOND_DIR}
-        if [ ! -s {input.fasta} ]; then
-            : > {output.out}
-            exit 0
-        fi
-        diamond blastx \
-          --threads {threads} \
-          -d {input.db} \
-          -q {input.fasta} \
-          -o {output.out} \
-          --outfmt 6 \
-          --sensitive \
-          --max-target-seqs 1 \
-          --evalue {params.evalue}
+        if [ ! -s {input.fasta} ]; then : > {output.out}; exit 0; fi
+        diamond blastx -d {input.db} -q {input.fasta} -o {output.out}
         """
 
 
+# 8.6 Intersection -> high-confidence lncRNAs (upstream prediction_insersection.sh)
 rule intersect_predictions:
     input:
-        feelnc=FEELNC_GTF,
-        cpat=CPAT_OUTPUT,
+        feelnc=FEELNC_CANDIDATE_TXT,
         boost=LNCBOOST_PREDICTIONS,
+        cpat=CPAT_OUTPUT,
         lncfinder=LNCFINDER_RESULTS,
         diamond=DIAMOND_OUTPUT,
-        script="workflow/scripts/intersect_ids.R"
+        script="workflow/scripts/prediction_insersection.sh"
     output:
         ids=FINAL_IDS,
-        summary=INTERSECTION_SUMMARY
+        venn=VENN_PDF
     params:
-        out_prefix=f"{FINAL_DIR}/{PREFIX}",
-        cpat_cutoff=config.get("cpat_coding_probability_cutoff", 0.46),
-        diamond_evalue=config.get("diamond_evalue", "1e-5")
+        script=INTERSECT_SCRIPT,
+        final_dir=FINAL_DIR
     threads:
         cfg_threads("intersect", 4)
     container:
@@ -586,39 +457,34 @@ rule intersect_predictions:
     shell:
         r"""
         set -euo pipefail
-        mkdir -p {FINAL_DIR}
-        Rscript {input.script} \
-          --feelnc {input.feelnc} \
-          --cpat {input.cpat} \
-          --boost {input.boost} \
-          --lncfinder {input.lncfinder} \
-          --diamond {input.diamond} \
-          --out {params.out_prefix} \
-          --cpat-cutoff {params.cpat_cutoff} \
-          --diamond-evalue {params.diamond_evalue}
+        mkdir -p {params.final_dir}
+        feelnc=$(readlink -f {input.feelnc}); boost=$(readlink -f {input.boost})
+        cpat=$(readlink -f {input.cpat}); lncf=$(readlink -f {input.lncfinder})
+        diam=$(readlink -f {input.diamond}); script=$(readlink -f {input.script})
+        cd {params.final_dir}
+        Rscript "$script" "$feelnc" "$boost" "$cpat" "$lncf" "$diam"
         """
 
 
+# lncRNA GTF (grep -Fwf, faithful)
 rule final_lncRNA_gtf:
     input:
         ids=FINAL_IDS,
-        gtf=CANDIDATE_GTF,
-        script="workflow/scripts/filter_gtf_by_ids.py"
+        gtf=CANDIDATE_GTF
     output:
         gtf=FINAL_GTF
     container:
-        container("python_utils")
+        container("gffread")
     shell:
         r"""
         set -euo pipefail
         mkdir -p {FINAL_DIR}
-        python3 {input.script} \
-          --ids {input.ids} \
-          --gtf {input.gtf} \
-          --output {output.gtf}
+        if [ ! -s {input.ids} ]; then : > {output.gtf}; exit 0; fi
+        grep -Fwf {input.ids} {input.gtf} > {output.gtf} || true
         """
 
 
+# lncRNA FASTA (convenience extract from the faithful GTF)
 rule final_lncRNA_fasta:
     input:
         gtf=FINAL_GTF,
@@ -633,14 +499,12 @@ rule final_lncRNA_fasta:
         r"""
         set -euo pipefail
         mkdir -p {FINAL_DIR}
-        if [ ! -s {input.gtf} ]; then
-            : > {output.fasta}
-            exit 0
-        fi
+        if [ ! -s {input.gtf} ]; then : > {output.fasta}; exit 0; fi
         gffread -w {output.fasta} -g {input.fasta} {input.gtf}
         """
 
 
+# 9. Classification by genomic location + category breakdown (faithful awk filters)
 rule feelnc_classifier:
     input:
         lnc_gtf=FINAL_GTF,
@@ -655,88 +519,14 @@ rule feelnc_classifier:
         r"""
         set -euo pipefail
         mkdir -p {FINAL_DIR}
-        if [ ! -s {input.lnc_gtf} ]; then
-            : > {output.classes}
-            exit 0
-        fi
-        FEELnc_classifier.pl \
-          -i {input.lnc_gtf} \
-          -a {input.annotation} \
-          -w 10000 \
-          -m 100000 \
-          -v 1 > {output.classes}
-        """
-
-
-rule truth_cdhit:
-    input:
-        fasta=TRUTH_INPUT_FASTA
-    output:
-        fasta=TRUTH_CLUSTERED_FASTA
-    params:
-        identity=config.get("cdhit_identity", 0.90)
-    threads:
-        cfg_threads("cdhit", 8)
-    container:
-        container("cd_hit")
-    shell:
-        r"""
-        set -euo pipefail
-        mkdir -p $(dirname {output.fasta})
-        cd-hit \
-          -i {input.fasta} \
-          -o {output.fasta} \
-          -c {params.identity} \
-          -M 800 \
-          -T {threads} \
-          -l 200
-        """
-
-
-rule minimap2_truth_alignment:
-    input:
-        pred=FINAL_FASTA,
-        truth=TRUTH_FASTA
-    output:
-        paf=VERIFY_PAF,
-        metrics=VERIFY_METRICS
-    params:
-        identity=config.get("minimap_identity_cutoff", 0.95)
-    threads:
-        cfg_threads("minimap2", 8)
-    container:
-        container("minimap2")
-    shell:
-        r"""
-        set -euo pipefail
-        mkdir -p {VERIFY_DIR}
-        if [ ! -s {input.pred} ] || [ ! -s {input.truth} ]; then
-            : > {output.paf}
-            {
-              echo "total_predicted_lncRNAs=0"
-              echo "true_positive_predictions=0"
-              echo "false_positive_predictions=0"
-              echo "truth_sequences_hit=0"
-              echo "total_truth_sequences=$(grep -c '^>' {input.truth} 2>/dev/null || echo 0)"
-              echo "false_negative_truth_sequences=$(grep -c '^>' {input.truth} 2>/dev/null || echo 0)"
-            } > {output.metrics}
-            exit 0
-        fi
-
-        minimap2 -x cdna -t {threads} {input.truth} {input.pred} -o {output.paf}
-        TOTAL_PRED=$(grep -c '^>' {input.pred})
-        TP=$(awk -v cutoff="{params.identity}" '{{if($11 > 0 && $10/$11 > cutoff) print $1}}' {output.paf} | sort -u | wc -l | tr -d ' ')
-        FP=$((TOTAL_PRED - TP))
-        HIT_TRUTH=$(awk -v cutoff="{params.identity}" '{{if($11 > 0 && $10/$11 > cutoff) print $6}}' {output.paf} | sort -u | wc -l | tr -d ' ')
-        TOTAL_TRUTH=$(grep -c '^>' {input.truth})
-        FN=$((TOTAL_TRUTH - HIT_TRUTH))
-
-        {
-          echo "total_predicted_lncRNAs=${{TOTAL_PRED}}"
-          echo "true_positive_predictions=${{TP}}"
-          echo "false_positive_predictions=${{FP}}"
-          echo "truth_sequences_hit=${{HIT_TRUTH}}"
-          echo "total_truth_sequences=${{TOTAL_TRUTH}}"
-          echo "false_negative_truth_sequences=${{FN}}"
-        } > {output.metrics}
+        if [ ! -s {input.lnc_gtf} ]; then : > {output.classes}; exit 0; fi
+        FEELnc_classifier.pl -i {input.lnc_gtf} -a {input.annotation} > {output.classes}
+        cd {FINAL_DIR}
+        cls=$(basename {output.classes})
+        awk -F '\t' '{{if($1==1 && $6=="antisense" && $10=="exonic"){{print $0}}}}' "$cls" > LncRNA_antisense_exonic.txt || true
+        awk -F '\t' '{{if($1==1 && $6=="sense" && $10=="intronic"){{print $0}}}}' "$cls" > LncRNA_intronic.txt || true
+        awk -F '\t' '{{if($1==1 && $6=="sense" && $7=="intergenic" && $8<=2000 && $10=="upstream"){{print $0}}}}' "$cls" > LncRNA_upstream.txt || true
+        awk -F '\t' '{{if($1==1 && $6=="sense" && $7=="intergenic" && $8<=2000 && $10=="downstream"){{print $0}}}}' "$cls" > LncRNA_downstream.txt || true
+        awk -F '\t' '{{if($1==1 && $7=="intergenic" && $8>2000){{print $0}}}}' "$cls" > LncRNA_intergenic.txt || true
+        awk -F '\t' '{{if($1==1 && $6=="antisense" && $7=="intergenic" && $8<=2000 && $10=="upstream"){{print $0}}}}' "$cls" > LncRNA_Bidirectional.txt || true
         """

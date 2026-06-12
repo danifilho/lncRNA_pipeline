@@ -1,30 +1,16 @@
 Bootstrap: docker
 From: ubuntu:22.04
 
+# LncFinder-plant exactly as in Plant-LncRNA-pipeline: make_frequencies() on the
+# plant training set + the pre-trained SVM (Plant_model.rda), SS.features = FALSE.
+# Bundles the upstream repo that ships both the training FASTAs and the model.
+
 %post
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y --no-install-recommends \
-        software-properties-common \
-        dirmngr \
-        gnupg \
-        ca-certificates \
-        wget \
-        curl \
-        libcurl4-openssl-dev \
-        libssl-dev \
-        libxml2-dev \
-        libfontconfig1-dev \
-        libharfbuzz-dev \
-        libfribidi-dev \
-        libfreetype6-dev \
-        libpng-dev \
-        libtiff5-dev \
-        libjpeg-dev \
-        build-essential \
-        gfortran \
-        cmake \
-        libgomp1
+        software-properties-common dirmngr gnupg ca-certificates wget curl git \
+        libcurl4-openssl-dev libssl-dev libxml2-dev build-essential gfortran
 
     wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
         > /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc
@@ -32,17 +18,10 @@ From: ubuntu:22.04
     apt-get update
     apt-get install -y --no-install-recommends r-base r-base-dev
 
-    cd /tmp
-    wget https://www.tbi.univie.ac.at/RNA/download/sourcecode/2_7_x/ViennaRNA-2.7.2.tar.gz
-    tar -zxvf ViennaRNA-2.7.2.tar.gz
-    cd ViennaRNA-2.7.2
-    ./configure --without-perl --without-python --without-python3 --disable-all-bind
-    make -j"$(nproc)"
-    make install
-    cd /tmp
-    rm -rf ViennaRNA-2.7.2*
+    R -e "install.packages(c('seqinr','e1071','LncFinder'), repos='https://cloud.r-project.org')"
 
-    R -e "install.packages(c('seqinr', 'e1071', 'LncFinder'), repos='https://cloud.r-project.org')"
+    # ships example_data/training_{mRNA,lncRNA}.fasta and Model/Plant_model.rda
+    git clone --depth 1 https://github.com/xuechantian/Plant-LncRNA-pipline.git /opt/Plant-LncRNA-pipline
 
     apt-get clean
     rm -rf /var/lib/apt/lists/*
@@ -50,12 +29,12 @@ From: ubuntu:22.04
 %environment
     export LC_ALL=C.UTF-8
     export LANG=C.UTF-8
-    export PATH=/usr/local/bin:$PATH
 
 %test
     R -e "library(LncFinder); library(seqinr); library(e1071)"
-    RNAfold --version
+    test -f /opt/Plant-LncRNA-pipline/Model/Plant_model.rda
+    test -f /opt/Plant-LncRNA-pipline/example_data/training_mRNA.fasta
+    test -f /opt/Plant-LncRNA-pipline/example_data/training_lncRNA.fasta
 
 %runscript
     exec Rscript "$@"
-

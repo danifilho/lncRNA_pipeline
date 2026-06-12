@@ -1,33 +1,32 @@
 # IWGC lncRNA Prediction Pipeline
 
-A reproducible **Snakemake + Singularity/Apptainer** workflow for *de novo* discovery of
-long non-coding RNAs (lncRNAs) in non-model plants, expanding existing genome annotations.
+A **faithful, containerized re-implementation of the
+[Plant-LncRNA-pipeline-v2](https://github.com/xuechantian/Plant-LncRNA-pipeline-v2)**
+(Tian *et al.*) for discovering long non-coding RNAs (lncRNAs) in plants.
 
-The pipeline assembles a reference-guided transcriptome from public RNA-seq data, extracts
-novel transcript candidates, and keeps only those that **four independent coding-potential
-tools agree are non-coding** and that have **no protein hit** — a high-confidence consensus
-set of lncRNAs.
+Every step runs the **same tool, command, model and cutoff as the upstream pipeline** — the
+only differences are that each tool runs inside its own **Singularity/Apptainer** container and
+the whole thing is orchestrated by **Snakemake**. Documented deviations from upstream are listed
+in [Fidelity to upstream](#fidelity-to-upstream); there are only three, all cosmetic/packaging.
 
-> Adapted from the Plant-LncRNA-pipeline-v2 by Xue-Chan Tian *et al.*
-> ([DOI](https://doi.org/10.1093/hr/uhae041) ·
-> [GitHub](https://github.com/xuechantian/Plant-LncRNA-pipeline-v2)) and
-> [FEELnc](https://github.com/tderrien/FEELnc), re-implemented as a containerized Snakemake
-> workflow for HPC (tested on the MSU HPCC / ICER).
+> Upstream: Tian, X.-C. *et al.* *PlantLncBoost…* New Phytol. (2025),
+> [DOI](https://doi.org/10.1111/nph.70211) ·
+> [Plant-LncRNA-pipeline-v2](https://github.com/xuechantian/Plant-LncRNA-pipeline-v2) ·
+> [FEELnc](https://github.com/tderrien/FEELnc).
 
 ---
 
 ## Table of contents
-
 - [Overview](#overview)
-- [Workflow diagram](#workflow-diagram)
+- [Workflow](#workflow)
 - [Inputs](#inputs)
 - [Pipeline steps](#pipeline-steps)
 - [Containers](#containers)
 - [Outputs](#outputs)
 - [How to run](#how-to-run)
+- [Fidelity to upstream](#fidelity-to-upstream)
 - [Test results (Arabidopsis TAIR10)](#test-results-arabidopsis-tair10)
 - [Repository layout](#repository-layout)
-- [Further documentation](#further-documentation)
 
 ---
 
@@ -35,272 +34,188 @@ set of lncRNAs.
 
 | | |
 |---|---|
-| **Goal** | Discover high-confidence lncRNAs not present in a species' current annotation |
-| **Engine** | [Snakemake](https://snakemake.github.io/) 9.x |
-| **Reproducibility** | One [Singularity/Apptainer](https://apptainer.org/) image per tool (15 images) |
-| **Inputs** | Reference genome + annotation, RNA-seq reads, a protein database |
-| **Output** | A consensus set of lncRNA IDs, GTF, FASTA, and FEELnc classifications |
-| **Consensus rule** | `FEELnc ∩ CPAT ∩ LncFinder ∩ PlantLncBoost ∩ (no DIAMOND protein hit)` |
-
-The workflow is fully described in [`workflow/Snakefile`](workflow/Snakefile); all paths and
-parameters are configured in [`config/config.yaml`](config/config.yaml).
+| **Goal** | High-confidence lncRNAs not in a species' current annotation |
+| **Method** | Reference-guided assembly → 4-tool coding-potential consensus |
+| **Consensus** | `PlantLncBoost ∩ CPAT ∩ LncFinder ∩ (FEELnc candidates − DIAMOND protein hits)` |
+| **Engine** | Snakemake 9 + Apptainer (one image per tool) |
+| **Tested on** | MSU HPCC (ICER), Arabidopsis TAIR10 → 10 lncRNAs end-to-end |
 
 ---
 
-## Workflow diagram
+## Workflow
 
 ```mermaid
 flowchart TD
-    subgraph IN[1 . Inputs]
-        G[Reference genome FASTA]
-        A[Annotation GTF]
-        R[RNA-seq runs / FASTQ]
-        U[UniProt protein DB]
-    end
-
-    R -->|prefetch / fasterq-dump| RAW[raw FASTQ]
-    RAW -->|fastp| TRIM[trimmed reads]
-    G --> IDX
-    A --> IDX[STAR genome index]
-    TRIM -->|STAR| BAM[sorted BAM]
-    IDX --> BAM
-    BAM -->|samtools index| BAI[indexed BAM]
-    BAI -->|StringTie assemble| ASM[per-sample GTF]
-    A --> MRG
-    ASM -->|StringTie merge| MRG[merged transcriptome GTF]
-    MRG -->|grep MSTRG + gffread| CAND[candidate GTF / FASTA]
-
-    CAND --> FE[FEELnc_filter]
-    CAND --> CP[CPAT]
-    CAND --> LF[LncFinder]
-    CAND --> LB[PlantLncBoost]
-    CAND --> DI[DIAMOND blastx]
-    U --> DI
-
-    FE --> INT
+    G[Reference genome] --> IDX
+    A[Annotation GTF] --> ST1 & ST2 & FE & CL
+    R[RNA-seq FASTQ] -->|fastp| TR[clean reads]
+    IDX[hisat2-build] --> AL
+    TR -->|HISAT2 + samtools sort| AL[sorted BAM]
+    AL -->|StringTie| ST1[per-sample GTF]
+    ST1 -->|StringTie --merge| MG[merged GTF]
+    MG -->|grep MSTRG + gffread| C[candidate_transcript .gtf/.fasta/.txt]
+    C --> FE[FEELnc_filter] --> FT[candidate_lncRNA.txt]
+    C --> CP[CPAT-plant]
+    C --> LF[LncFinder-plant]
+    C --> LB[PlantLncBoost]
+    C --> DI[DIAMOND blastx]
+    U[UniProt] --> DI
+    FT --> INT
     CP --> INT
     LF --> INT
     LB --> INT
-    DI --> INT[Intersect IDs]
-    INT --> FINAL[Consensus lncRNAs<br/>IDs · GTF · FASTA]
-    FINAL -->|FEELnc_classifier| CLS[lncRNA classes]
-    FINAL -.optional.->|minimap2 vs truth set| VAL[validation metrics]
+    DI --> INT[prediction_insersection.sh]
+    INT --> RES[Final_lncRNA_results.txt + Venn]
+    RES -->|grep -Fwf| GTF[lncRNA.gtf] --> FA[lncRNA.fasta]
+    GTF -->|FEELnc_classifier| CL[lncRNA_classes.txt + categories]
+    INT -. ST2 .-> ST2[ ]
 ```
 
-The Snakefile expands to **22 jobs** for a 2-sample run (one `fastp`/`star_align`/
-`samtools_index`/`stringtie_assemble` per sample, plus the shared downstream steps).
+For a 2-sample run the Snakefile expands to **20 jobs**.
 
 ---
 
 ## Inputs
 
-All inputs are declared in `config/config.yaml` (paths support `{species}`/`{prefix}`
-templating).
+Configured in `config/config.yaml` (`{species}`/`{prefix}` templating).
 
-| Input | Config key | Description | How to obtain |
-|-------|-----------|-------------|---------------|
-| **Reference genome** | `reference_fasta` | Cleaned chromosome FASTA (`{species}.chromosomes.fa`) | NCBI `datasets` → `scripts/ncbi_datasets_cleanup.py` |
-| **Annotation** | `annotation_gtf` | Protein-coding annotation GTF (`{species}_mRNA.gtf`) | same cleanup script |
-| **RNA-seq** | `sra_accessions` or `raw_fastq_dir` | SRA accessions to download, **or** pre-downloaded FASTQ | PLncDB / SRA / ENA |
-| **Protein DB** | `diamond_db` / `uniprot_fasta` | DIAMOND database, or a SwissProt FASTA to build one | [UniProt](https://www.uniprot.org/) |
-| **Truth set** *(optional)* | `truth_input_fasta` | Known lncRNAs for benchmarking (minimap2 step) | [PLncDB](https://www.tobaccodb.org/plncdb/) / EVlncRNA |
+| Input | Config key | Notes |
+|-------|-----------|-------|
+| Reference genome | `reference_fasta` | cleaned chromosome FASTA |
+| Annotation | `annotation_gtf` | protein-coding GTF (`gene_id`/`transcript_id`) |
+| RNA-seq | `sra_accessions` / `raw_fastq_dir` | SRA accessions to fetch, or existing FASTQ |
+| Protein DB | `diamond_db` / `uniprot_fasta` | DIAMOND db, or SwissProt FASTA to build one |
+| Strandness | `strand_specific` | `true` adds `--rna-strandness RF` / stringtie `--rf` |
 
-**Preparing the reference** (NCBI `datasets`):
-
-```bash
-datasets download genome taxon "Arabidopsis thaliana" --reference --include genome,gff3
-unzip ncbi_dataset.zip
-python3 scripts/ncbi_datasets_cleanup.py <species>   # -> <species>.chromosomes.fa + <species>_mRNA.gtf
-```
-
-`ncbi_datasets_cleanup.py` keeps only full chromosomes, renames them to `chr1..chrN`, and
-emits a GTF with `gene_id`/`transcript_id` attributes that the downstream tools expect.
+Reference prep (NCBI `datasets` → `scripts/ncbi_datasets_cleanup.py`) produces
+`{species}.chromosomes.fa` + `{species}_mRNA.gtf`. The CPAT logit, hexamer, PlantLncBoost model,
+LncFinder plant model + training data, and the intersection script are all bundled inside the
+containers (or this repo) — no external model downloads needed.
 
 ---
 
 ## Pipeline steps
 
-Each Snakemake rule runs inside a dedicated container (see [Containers](#containers)).
+| # | Rule | Tool | Container | Upstream step |
+|---|------|------|-----------|---------------|
+| 1 | `prefetch_sra` *(opt)* | prefetch/fasterq-dump | `sra_tools` | 5.1 |
+| 2 | `fastp` | fastp | `fastp` | 5.2 |
+| 3 | `hisat2_index` | hisat2-build | `hisat2` | 6 |
+| 4 | `hisat2_align` | hisat2 \| samtools sort | `hisat2` | 6 |
+| 5 | `stringtie_assemble` | StringTie | `stringtie` | 7 |
+| 6 | `stringtie_merge` | StringTie --merge | `stringtie` | 7 |
+| 7 | `extract_candidates` | grep MSTRG + gffread | `gffread` | 7 |
+| 8 | `feelnc_filter` | FEELnc_filter.pl | `feelnc` | 8.1 |
+| 9 | `lncboost` | PlantLncBoost | `lncboost` | 8.2 |
+| 10 | `lncfinder` | LncFinder-plant (R) | `lncfinder` | 8.3 |
+| 11 | `cpat` | CPAT-plant | `cpat` | 8.4 |
+| 12 | `diamond_makedb`/`diamond_blastx` | DIAMOND | `diamond` | 8.5 |
+| 13 | `intersect_predictions` | prediction_insersection.sh | `intersect` | 8.6 |
+| 14 | `final_lncRNA_gtf` | grep -Fwf | `gffread` | 8.6 |
+| 15 | `final_lncRNA_fasta` | gffread | `gffread` | (convenience) |
+| 16 | `feelnc_classifier` | FEELnc_classifier.pl + awk | `feelnc` | 9 |
 
-| # | Rule | Tool | Container | Purpose |
-|---|------|------|-----------|---------|
-| 1 | `prefetch_sra` *(optional)* | prefetch / fasterq-dump | `sra_tools` | Download RNA-seq runs from SRA and convert to FASTQ |
-| 2 | `fastp` | fastp | `fastp` | Adapter/quality trimming of raw reads |
-| 3 | `star_genome_generate` | STAR | `star` | Build the STAR genome index from genome + annotation |
-| 4 | `star_align` | STAR | `star` | Spliced alignment of trimmed reads → sorted BAM |
-| 5 | `samtools_index` | samtools | `samtools` | Index each BAM |
-| 6 | `stringtie_assemble` | StringTie | `stringtie` | Reference-guided transcript assembly per sample |
-| 7 | `stringtie_merge` | StringTie | `stringtie` | Merge per-sample assemblies into one transcriptome |
-| 8 | `extract_candidates` | awk + gffread | `gffread` | Keep novel `MSTRG` transcripts → candidate GTF/FASTA/IDs |
-| 9 | `feelnc_filter` | FEELnc_filter.pl | `feelnc` | Remove candidates overlapping mRNA / too short |
-| 10 | `cpat` | CPAT (plant model) | `cpat` | Coding-probability score per candidate |
-| 11 | `lncfinder` | RNAfold + LncFinder (R) | `lncfinder` | Secondary-structure-aware coding/non-coding SVM |
-| 12 | `lncboost` | PlantLncBoost (CatBoost) | `lncboost` | Plant lncRNA classifier |
-| 13 | `diamond_makedb` | DIAMOND | `diamond` | Build the protein database (once) |
-| 14 | `diamond_blastx` | DIAMOND | `diamond` | Detect protein-coding candidates (translated hits) |
-| 15 | `intersect_predictions` | R (base) | `intersect` | Intersect the four tools, subtract protein hits |
-| 16 | `final_lncRNA_gtf` | python | `python_utils` | Filter candidate GTF to the consensus IDs |
-| 17 | `final_lncRNA_fasta` | gffread | `gffread` | Extract consensus lncRNA sequences |
-| 18 | `feelnc_classifier` | FEELnc_classifier.pl | `feelnc` | Classify lncRNAs (intergenic/antisense, etc.) |
-| 19 | `truth_cdhit` *(optional)* | CD-HIT | `cd_hit` | Cluster/condense the truth lncRNA set |
-| 20 | `minimap2_truth_alignment` *(optional)* | minimap2 | `minimap2` | Benchmark predictions vs the truth set (TP/FP/FN) |
-
-**The consensus logic** (rule 15, `workflow/scripts/intersect_ids.R`): a candidate is a
-high-confidence lncRNA only if it is called *non-coding* by **FEELnc, CPAT, LncFinder and
-PlantLncBoost simultaneously** and has **no significant DIAMOND protein hit**
-(`evalue ≤ 1e-5`). Per-tool cutoffs (`cpat_coding_probability_cutoff`, `lncboost_threshold`,
-`diamond_evalue`, …) are set in `config/config.yaml`.
+**Consensus (step 13):** the upstream `prediction_insersection.sh` is run verbatim — a candidate
+is kept iff it is PlantLncBoost-lncRNA **and** CPAT-noncoding **and** LncFinder-noncoding **and**
+in the FEELnc candidate list **and** has no DIAMOND hit (`pident>60 & evalue<1e-5`).
 
 ---
 
 ## Containers
 
-15 single-tool images, built from the definition files in `containers/*.def`. They are **not**
-stored in git (≈3 GB); build them with `scripts/build_singularity_images.sh`. See
-[`docs/CONTAINERS.md`](docs/CONTAINERS.md) for the full per-image breakdown.
+15 single-tool images, built from `containers/*.def` with
+`scripts/build_singularity_images.sh` (not stored in git). Full details in
+[docs/CONTAINERS.md](docs/CONTAINERS.md).
 
-| Image (`.sif`) | Base | Software (pinned) | Used by |
-|----------------|------|-------------------|---------|
-| `sra_tools` | micromamba | sra-tools 3.1.1, pigz | prefetch_sra |
-| `fastp` | micromamba | fastp 0.23.4 | fastp |
-| `star` | micromamba | STAR 2.7.11b | star_genome_generate, star_align |
-| `samtools` | micromamba | samtools 1.20 | samtools_index |
-| `stringtie` | micromamba | StringTie 2.2.1 | stringtie_assemble/merge |
-| `gffread` | micromamba | gffread 0.12.9 | extract_candidates, final_lncRNA_fasta |
-| `feelnc` | ubuntu 22.04 | FEELnc (+ BioPerl) | feelnc_filter, feelnc_classifier |
-| `cpat_plant` | ubuntu 18.04 | CPAT 1.2.4 + Plant-LncRNA model | cpat |
-| `plant_lnc_boost` | python 3.9 | PlantLncBoost (CatBoost) + model | lncboost |
-| `lncfinder` | ubuntu 22.04 | R + LncFinder + ViennaRNA 2.7.2 (RNAfold) | lncfinder |
-| `diamond` | micromamba | DIAMOND 2.1.8 | diamond_makedb/blastx |
-| `intersect_ids` | rocker/r-ver 4.3.3 | base R | intersect_predictions |
-| `python_utils` | python 3.11-slim | python 3 | final_lncRNA_gtf |
-| `minimap2` | micromamba | minimap2 2.28 | minimap2_truth_alignment |
-| `cd_hit` | micromamba | cd-hit 4.8.1 | truth_cdhit |
-
-The `cpat_plant` and `plant_lnc_boost` images clone
-[Plant-LncRNA-pipeline-v2](https://github.com/xuechantian/Plant-LncRNA-pipeline-v2) at build
-time to bundle the plant hexamer table, logit model and CatBoost model (build node needs
-internet).
+| Image | Tool(s) | Notes |
+|-------|---------|-------|
+| `hisat2` | HISAT2 2.2.1 + samtools 1.20 | built for this pipeline |
+| `fastp` | fastp 0.23.4 | |
+| `stringtie` | StringTie 2.2.1 | |
+| `gffread` | gffread 0.12.9 | |
+| `feelnc` | FEELnc (+ BioPerl) | |
+| `cpat_plant` | CPAT 1.2.4 + Plant model | |
+| `plant_lnc_boost` | PlantLncBoost (CatBoost) + model | |
+| `lncfinder` | R + LncFinder + **plant SVM & training data** | bundles upstream v1 repo |
+| `diamond` | DIAMOND 2.1.8 | |
+| `intersect_ids` | R + tidyverse + VennDiagram + upstream script | runs prediction_insersection.sh |
+| `sra_tools`,`samtools`,`minimap2`,`cd_hit`,`python_utils` | helpers | |
 
 ---
 
 ## Outputs
 
-Written to `{species}/03_outputs/10_final/`:
+`{species}/03_outputs/10_final/`:
 
 | File | Description |
 |------|-------------|
-| `{prefix}_final_ids.txt` | Consensus high-confidence lncRNA transcript IDs |
-| `{prefix}_lncRNA.gtf` | GTF of the consensus lncRNAs |
-| `{prefix}_lncRNA.fasta` | FASTA sequences of the consensus lncRNAs |
-| `{prefix}_lncRNA_classes.txt` | FEELnc classification (intergenic / antisense / …) |
-| `{prefix}_intersection_summary.csv` | Per-candidate pass/fail table for every tool |
-
-Optional validation (`run_truth_alignment: true`) adds
-`{species}/03_outputs/11_verify/{prefix}_truth_vs_pred.metrics.txt` with TP/FP/FN counts.
+| `Final_lncRNA_results.txt` | high-confidence lncRNA IDs (upstream name) |
+| `lncRNA.gtf` / `lncRNA.fasta` | their GTF and sequences |
+| `lncRNA_classes.txt` | FEELnc classification |
+| `LncRNA_{antisense_exonic,intronic,upstream,downstream,intergenic,Bidirectional}.txt` | category breakdown (upstream §9) |
+| `Venn_pred_lncRNA.pdf` | 4-tool overlap Venn |
 
 ---
 
 ## How to run
 
 ```bash
-# 1. Environment (Snakemake)
-conda env create -f workflow/envs/snakemake.yaml
-conda activate iwgc-lnc-snakemake
-
-# 2. Build the containers (build node needs internet; ≈3 GB total)
-scripts/build_singularity_images.sh            # or: scripts/build_singularity_images.sh --remote
-
-# 3. Edit config/config.yaml for your species (paths, prefix, samples, cutoffs)
-
-# 4. Dry-run, then run with Singularity
+conda env create -f workflow/envs/snakemake.yaml && conda activate iwgc-lnc-snakemake
+scripts/build_singularity_images.sh                 # build the 15 images (needs internet)
+# edit config/config.yaml for your species
 snakemake --snakefile workflow/Snakefile --configfile config/config.yaml --cores 32 --dry-run
 snakemake --snakefile workflow/Snakefile --configfile config/config.yaml --cores 32 --use-singularity
 ```
 
-**On a Slurm cluster**, wrap the `snakemake` call in an `sbatch` script and run it on a
-compute node (see `scripts/run_pipeline_ath.sb` for the Arabidopsis example). Note: the
-`apptainer`/`singularity` binary must be on `PATH` inside the job, and bind the project tree
-with `APPTAINER_BINDPATH`.
+On Slurm, wrap the `snakemake` call in `sbatch` (see `scripts/run_pipeline_ath.sb`): put the
+`apptainer` binary on `PATH` and bind the project tree via `APPTAINER_BINDPATH`.
 
-A quick **smoke test** validates the custom R/Python logic without containers:
+---
 
-```bash
-scripts/run_smoke_test.sh
-```
+## Fidelity to upstream
+
+The pipeline reproduces Plant-LncRNA-pipeline-v2 command-for-command. There are **three
+documented deviations, none of which change the method**:
+
+1. **CPAT logit format.** Upstream `Plant.logit.RData` is serialized in the newer RDX3 format,
+   which CPAT 1.2.4's R 3.4 cannot `load()`. `scripts/Plant.logit.v2.RData` is the **byte-identical
+   model** (`all.equal == TRUE`) re-saved in the R-v2 format. Same model, same scores.
+2. **LncFinder training data.** The v2 README's `make_frequencies()` reads
+   `data/training/{mRNA,lncRNA}.fasta`, which are not shipped in the v2 repo; they live in the
+   author's predecessor repo (`Plant-LncRNA-pipline/example_data/`). The `lncfinder` container
+   clones that repo, so the plant model is reproduced exactly.
+3. **Venn diagram.** `prediction_insersection.sh` is vendored verbatim except the cosmetic
+   `venn.diagram()` call gets `filename=NULL` + `grid.draw()` (newer VennDiagram requires it).
+   The lncRNA intersection logic is untouched.
+
+**Known upstream quirk (reproduced, not fixed):** CPAT's output has an unnamed first column, so
+`prediction_insersection.sh`'s `read_delim(...) %>% filter(coding_prob<0.46)` parses raggedly and
+matches all candidates — i.e. **CPAT effectively does not filter** under current tidyverse. The
+consensus is therefore driven by FEELnc ∩ PlantLncBoost ∩ LncFinder ∩ ¬protein. This is the
+published script's behavior; it is kept verbatim by design.
 
 ---
 
 ## Test results (Arabidopsis TAIR10)
 
-End-to-end validation run on the MSU HPCC. See [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)
-for the full write-up (including four bugs found and fixed).
+End-to-end validation on the MSU HPCC — full report in
+[docs/TEST_RESULTS.md](docs/TEST_RESULTS.md), output files in
+[docs/test_results/arabidopsis_tair10/](docs/test_results/arabidopsis_tair10/).
 
-**Inputs used**
-
-| Input | Value |
-|-------|-------|
-| Genome / annotation | TAIR10 (RefSeq `GCF_000001735.4`) — 5 chromosomes, 55,937 mRNAs |
-| RNA-seq | `SRR2073143`, `SRR1688325` — single-end, 50 bp, subsampled to 6M reads each |
-| Protein DB | UniProt SwissProt (574,627 sequences) |
-| Truth set | none (validation step disabled for this functional test) |
-
-**Pipeline funnel**
-
-```
-61,237 merged transcripts → 1,375 MSTRG candidates → 394 scored by ≥1 tool
-   FEELnc non-coding   :   9
-   CPAT  non-coding    : 286
-   LncFinder non-coding: 384
-   PlantLncBoost lncRNA: 288
-   DIAMOND protein hit : 259
-→ 5-way consensus (minus protein hits): 4 high-confidence lncRNAs
-```
-
-**Result — 4 high-confidence lncRNAs**
-
-| lncRNA | Chr | Length | FEELnc class |
-|--------|-----|--------|--------------|
-| `MSTRG.1002.1` | chr1 | 218 bp (2 exons) | — |
-| `MSTRG.2278.1` | chr1 | 275 bp (2 exons) | — |
-| `MSTRG.9745.1` | chr3 | 585 bp | — |
-| `MSTRG.10857.1` | chr3 | 374 bp | antisense / intergenic to `AT3G59260` |
-
-Copies of the actual output files are in
-[`docs/test_results/arabidopsis_tair10/`](docs/test_results/arabidopsis_tair10/).
-
-> The small, shallow test set (2 single-end samples) yields only 9 FEELnc survivors, hence a
-> small consensus. For real annotation work use many diverse RNA-seq samples at full depth and
-> enable the truth-set validation.
+- **Inputs:** TAIR10 (RefSeq `GCF_000001735.4`); `SRR2073143` + `SRR1688325` (6M reads each); UniProt SwissProt.
+- **Funnel:** 2,674 candidates → FEELnc 14 · LncFinder-noncoding 585 · PlantLncBoost 593 → **10 lncRNAs**.
+- **Result:** `MSTRG.1000.1, 2055.1, 2326.2, 3725.1, 5145.1, 9727.1, 10838.1, 11740.1, 14179.1, 16769.1`.
 
 ---
 
 ## Repository layout
 
 ```
-IWGC_lncRNA_pipeline/
-├── README.md                     # this file
-├── config/
-│   ├── config.yaml               # main configuration
-│   └── config.ath.yaml           # Arabidopsis test configuration
-├── workflow/
-│   ├── Snakefile                 # the pipeline (22 rules)
-│   ├── envs/snakemake.yaml       # conda env for Snakemake
-│   └── scripts/                  # intersect_ids.R, lncFinder.R, filter_gtf_by_ids.py
-├── containers/                   # *.def Singularity definitions (images built into images/)
-├── scripts/                      # build script, Slurm templates, cleanup & model files
-├── tests/smoke/                  # smoke-test fixtures
-├── docs/                         # extended documentation + test results
-│   ├── CONTAINERS.md
-│   ├── TEST_RESULTS.md
-│   └── test_results/arabidopsis_tair10/
-└── {species}/                    # per-species inputs (01_inputs) and outputs (03_outputs)
+config/                config.yaml (template) + config.ath.yaml (Arabidopsis test)
+workflow/Snakefile     the pipeline (20 rules)
+workflow/scripts/      lncFinder.R, prediction_insersection.sh (vendored), filter_gtf_by_ids.py
+containers/*.def       Singularity definitions (built into containers/images/)
+scripts/               build script, Slurm templates, ncbi cleanup, Plant.logit.v2.RData
+docs/                  CONTAINERS.md, TEST_RESULTS.md, test_results/
+{species}/             per-species inputs (01_inputs) + outputs (03_outputs)
 ```
-
----
-
-## Further documentation
-
-- [`docs/CONTAINERS.md`](docs/CONTAINERS.md) — every container image, software, and build notes
-- [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) — full Arabidopsis test report + bug fixes
-- [`config/config.yaml`](config/config.yaml) — all configurable paths and parameters

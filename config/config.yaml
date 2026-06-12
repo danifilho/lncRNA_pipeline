@@ -1,22 +1,26 @@
-# Snakemake configuration for the IWGC lncRNA pipeline.
-# Paths are relative to the repository root unless they start with "/".
+# Faithful containerized re-implementation of Plant-LncRNA-pipeline-v2.
+# Same tools / commands / models as upstream; only Singularity + Snakemake differ.
+# This is the portable template (images under containers/images/, outputs under
+# {species}/03_outputs). See config.ath.yaml for the Arabidopsis test (scratch paths).
 
 species: "g.max"
 prefix: "soy"
 
-# Set to true when the workflow should download SRA accessions with prefetch/fasterq-dump.
-# If false, raw FASTQ files must already exist in raw_fastq_dir.
+# true: let Snakemake prefetch/fasterq-dump the SRA accessions; false: FASTQ already present.
 download_sra: false
+# RF-stranded libraries: adds hisat2 --rna-strandness RF + stringtie --rf
+strand_specific: false
 
-# Input layout.
+# Inputs.
 sra_accessions: "{species}/01_inputs/{species}_sra_IDs.txt"
 raw_fastq_dir: "{species}/01_inputs/raw_fastq"
 reference_fasta: "{species}/01_inputs/{species}.chromosomes.fa"
 annotation_gtf: "{species}/01_inputs/{species}_mRNA.gtf"
 
-# Output layout.
+# Index + outputs.
+hisat2_index_dir: "{species}/01_inputs/{prefix}_hisat2_index"
 fastp_dir: "{species}/03_outputs/01_fastp"
-star_dir: "{species}/03_outputs/02_STAR"
+align_dir: "{species}/03_outputs/02_hisat2"
 stringtie_dir: "{species}/03_outputs/03_stringtie"
 gffread_dir: "{species}/03_outputs/04_gffread"
 feelnc_dir: "{species}/03_outputs/05_FEELnc"
@@ -25,66 +29,39 @@ lncboost_dir: "{species}/03_outputs/07_lncBoost"
 lncfinder_dir: "{species}/03_outputs/08_lncFinder"
 diamond_dir: "{species}/03_outputs/09_diamond"
 final_dir: "{species}/03_outputs/10_final"
-verify_dir: "{species}/03_outputs/11_verify"
-star_index_dir: "{species}/01_inputs/{prefix}_indexed"
 
-# External model/database files.
-# The CPAT hexamer table is bundled into the CPAT container by cloning Plant-LncRNA-pipeline-v2.
+# Upstream models / scripts (baked into the containers).
 cpat_hexamer: "/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv"
+# Identical to upstream Plant.logit.RData, saved in R-v2 format so CPAT-1.2.4's old R can load it.
 cpat_logit: "scripts/Plant.logit.v2.RData"
-
-# The PlantLncBoost container clones Plant-LncRNA-pipeline-v2 into /opt.
 plant_lncboost_script_dir: "/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script"
 plant_lncboost_model: "/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb"
+# Intersection: upstream prediction_insersection.sh, vendored with one cosmetic Venn compat fix.
+intersect_script: "workflow/scripts/prediction_insersection.sh"
 
-# DIAMOND can either use an existing .dmnd file or build one from uniprot_fasta.
+# DIAMOND database (existing .dmnd, or build from uniprot_fasta).
 diamond_db: "resources/uniprot/uniprot_out.dmnd"
 uniprot_fasta: "resources/uniprot/uniprot_sprot.fasta"
-
-# Optional truth-set evaluation.
-cluster_truth: false
-run_truth_alignment: false
-truth_input_fasta: "truth_data/{species}/{prefix}_PLncDB_lncRNA.fa"
-truth_clustered_fasta: "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa"
-truth_fasta: "truth_data/{species}/{prefix}_PLncDB_cd-hit.0.9.fa"
-
-# Tool parameters.
-star_sjdb_overhang: 99
-star_genome_sa_index_nbases: 13
-stringtie_min_transcript_length: 200
-stringtie_min_junction_coverage: 2
-feelnc_min_size: 200
-feelnc_monoex: -1
-cpat_coding_probability_cutoff: 0.46
-lncboost_threshold: 0.5
-diamond_evalue: "1e-5"
-minimap_identity_cutoff: 0.95
-cdhit_identity: 0.90
 
 threads:
   prefetch: 8
   fastp: 8
-  star_index: 8
-  star_align: 8
-  samtools_index: 1
-  stringtie_assemble: 8
+  hisat2_index: 8
+  hisat2_align: 10
+  stringtie_assemble: 10
   stringtie_merge: 4
   feelnc_filter: 20
-  cpat: 16
-  lncboost: 20
-  lncfinder: 32
-  diamond: 32
+  cpat: 8
+  lncboost: 8
+  lncfinder: 8
+  diamond: 16
   intersect: 4
   gffread: 2
-  minimap2: 8
-  cdhit: 8
 
-# One SIF per software/step. Build these with scripts/build_singularity_images.sh.
 containers:
   sra_tools: "containers/images/sra_tools.sif"
   fastp: "containers/images/fastp.sif"
-  star: "containers/images/star.sif"
-  samtools: "containers/images/samtools.sif"
+  hisat2: "containers/images/hisat2.sif"
   stringtie: "containers/images/stringtie.sif"
   gffread: "containers/images/gffread.sif"
   feelnc: "containers/images/feelnc.sif"
@@ -93,6 +70,3 @@ containers:
   lncfinder: "containers/images/lncfinder.sif"
   diamond: "containers/images/diamond.sif"
   intersect: "containers/images/intersect_ids.sif"
-  minimap2: "containers/images/minimap2.sif"
-  cd_hit: "containers/images/cd_hit.sif"
-  python_utils: "containers/images/python_utils.sif"
