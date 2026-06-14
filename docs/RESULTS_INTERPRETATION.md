@@ -1,11 +1,10 @@
 # Interpreting the results & next steps
 
-This note explains how to read the consensus counts produced by the pipeline (in particular the
+This note tries to explain how to read the consensus counts produced by the pipeline (in particular the
 Glycine max run), documents a parsing issue inherited from the upstream intersection script, and
-lists concrete next steps. Nothing here has been applied to the faithful pipeline — these are
-recommendations.
+lists concrete next steps. 
 
-## How many lncRNAs should we expect? (Glycine max)
+## Understanding how many lncRNAs should we expect (Glycine max)
 
 | Reference | lncRNAs | Notes |
 |-----------|--------:|-------|
@@ -13,19 +12,18 @@ recommendations.
 | **PLncDB v2** (curated DB, many studies combined) | **~11,124 unique** (12,577 records) | the database this pipeline's truth step compares against |
 | **This pipeline** (4 deep runs, Wm82.a6.v1) | **23,606** | faithful run, job 9944833 |
 
-The 23,606 is the **right order of magnitude** (thousands–tens of thousands) but **~2× the entire
-PLncDB** and **~15× a typical single study** → it is an **over-estimate**. This is **not a pipeline
-failure** — it runs the upstream method faithfully — it reflects the test setup plus known looseness
-of the upstream approach.
+The 23,606 looks in the right order of magnitude but still 2× the entire
+PLncDB and 15 a typical single study, making me think that it is an over-estimate. I don't think this is a pipeline
+failure, cause I'm running the original method quite faithfully. 
 
-## Why the count is inflated
+## Why the count can be inflated?
 
-1. **CPAT effectively does not filter** (see next section) — the consensus is really
+1. CPAT effectively does not filter (see next section) — the consensus is really
    FEELnc ∩ LncFinder ∩ PlantLncBoost ∩ ¬protein instead of a true 4-tool intersection.
-2. **Isoforms are not collapsed** — counts are transcript-level (`MSTRG.x.y`), not gene-level.
-3. **FEELnc kept 71 %** of candidates (53,515 / 75,327) — this depends on the quality of the
+2. Isoforms are not collapsed — counts are transcript-level (`MSTRG.x.y`), not gene-level.
+3. FEELnc kept 71 % of candidates (53,515 / 75,327) — this depends on the quality of the
    `gffread`-converted Phytozome annotation; a longest-isoform reference would be stricter.
-4. **Classification is ~90 % antisense/exonic** (21,341 of 23,606), whereas real studies are
+4. Classification is ~90 % antisense/exonic (21,341 of 23,606), whereas real studies are
    dominated by *intergenic* lncRNAs — a sign of over-calling (likely spurious antisense
    transcription captured by the RF-stranded libraries).
 
@@ -80,7 +78,7 @@ We therefore reproduce the **published script's behavior with current tidyverse,
 
 ## Validation against PLncDB (minimap2)
 
-We aligned the 23,606 predicted lncRNAs against known soybean lncRNAs from **PLncDB** (5,767
+I aligned the 23,606 predicted lncRNAs against known soybean lncRNAs from **PLncDB** (5,767
 non-redundant *Glycine max* sequences, taxid 3847, via RNAcentral) with `minimap2 -x cdna`
 (`scripts/validate_vs_truth.sh`; full metrics in
 [`test_results/gmax_wm82/validation_vs_PLncDB.txt`](test_results/gmax_wm82/validation_vs_PLncDB.txt)).
@@ -100,27 +98,9 @@ non-redundant *Glycine max* sequences, taxid 3847, via RNAcentral) with `minimap
 - **Only ~2–3 % of predictions match a known lncRNA.** A low match rate alone does **not** prove the
   rest are false positives (PLncDB is not exhaustive; genuinely novel lncRNAs are possible). **But
   combined with the inflation signals** (CPAT not filtering, ~90 % antisense, no isoform collapse),
-  it indicates that a large fraction of the 23,606 are low-confidence / spurious rather than
-  bona-fide lncRNAs.
+  it indicates that a large fraction of the 23,606 are low-confidence.
 - Assemblies differ (predictions Wm82.a6 / Phytozome vs PLncDB Wm82.a4 / NCBI), but the same cultivar
-  is ~identical between versions, so this low overlap is **real, not assembly noise**.
-
-**Takeaway:** treat the 23,606 as a *permissive candidate set*, not a curated annotation. The low
-recall is driven mostly by limited input data; the low match rate plus the inflation factors mean the
-next steps below would materially tighten the result.
-
-## Next steps / possible solutions (not applied — would deviate from "verbatim upstream")
-
-1. **Fix the CPAT parse (1 line):** read the CPAT output by row names / explicit column index so
-   `coding_prob` is the real value (as done in this repo's own `intersect_ids.R` helper). Expected
-   to pull the consensus toward the literature range.
-2. **Collapse to one transcript per gene** (longest isoform) for gene-level counts.
-3. **Use a longest-isoform reference GTF** for FEELnc to tighten overlap filtering.
-4. **Truth-set validation — done** (see section above): minimap2 vs PLncDB gives ~7–11 % recall and
-   ~2–3 % of predictions matching known lncRNAs. To raise recall, add many more RNA-seq libraries
-   across tissues/conditions; to raise the match rate, apply steps 1–3.
-5. **Confirm library strandness** (e.g. RSeQC `infer_experiment.py`) before trusting the
-   antisense-heavy classification.
+  is ~identical between versions, so this low overlap is probably real, not assembly noise.
 
 ## References
 
