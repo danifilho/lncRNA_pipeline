@@ -121,3 +121,8 @@ Light outputs archived in [`test_results/gmax_wm82/`](test_results/gmax_wm82/)
 - Gotcha fixed during this run: `prefetch` (with `download_sra: true`) writes the `.sra` into the
   current dir — point it at scratch (the rule now uses `-O <scratch>` and cleans up) or download
   FASTQ on the dev node with `download_sra: false`, or the home quota fills and the job dies.
+
+> **Is 23,606 reasonable?** It is the right order of magnitude but ~2× the entire PLncDB (~11k
+> soybean lncRNAs) and ~15× a typical single study — an over-estimate. See
+> [RESULTS_INTERPRETATION.md](RESULTS_INTERPRETATION.md) for the full comparison, the analysis of
+> the upstream CPAT parsing issue (CPAT effectively does not filter), and concrete next steps.

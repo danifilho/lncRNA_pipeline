@@ -216,6 +216,9 @@ End-to-end validation on the MSU HPCC — full report in
 - Funnel: 75,327 candidates → FEELnc 53,515 · LncFinder 62,564 · PlantLncBoost 62,194 → **23,606 lncRNAs**.
 - Larger because of 4 deep stranded libraries + the upstream CPAT-non-filtering quirk (kept verbatim).
 
+> **How to read these counts** (why g.max is an over-estimate vs PLncDB/literature, the upstream
+> CPAT parsing analysis, and next steps): [docs/RESULTS_INTERPRETATION.md](docs/RESULTS_INTERPRETATION.md).
+
 ---
 
 ## Repository layout
