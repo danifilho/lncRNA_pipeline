@@ -1,4 +1,4 @@
-# IWGC lncRNA pipeline -- faithful containerized re-implementation of
+# IWGC lncRNA pipeline -- containerized re-implementation of
 # Plant-LncRNA-pipeline-v2 (Tian et al.). Every step runs the same tool /
 # command as the upstream pipeline; the only differences are Singularity
 # containers + Snakemake orchestration.
