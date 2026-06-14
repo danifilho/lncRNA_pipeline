@@ -1,0 +1,7 @@
+FEELnc_candidates=53515
+CPAT_noncoding_REAL(coding_prob<0.46)=61635
+LncFinder_noncoding=62564
+PlantLncBoost_lncRNA=62194
+DIAMOND_protein_hits(pident>60.0,e<1e-05)=36164
+STRICT_consensus_transcripts=23411
+STRICT_consensus_genes(longest_isoform)=18575
