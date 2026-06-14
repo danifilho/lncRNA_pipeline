@@ -123,23 +123,43 @@ in the FEELnc candidate list **and** has no DIAMOND hit (`pident>60 & evalue<1e-
 
 ## Containers
 
-15 single-tool images, built from `containers/*.def` with
-`scripts/build_singularity_images.sh` (not stored in git). Full details in
+The pipeline runs **one tool per Singularity/Apptainer container** (for reproducibility): 15 images
+defined by `containers/*.def`, built with `scripts/build_singularity_images.sh` into
+`containers/images/` (not stored in git, ~3.5 GB). Per-image details in
 [docs/CONTAINERS.md](docs/CONTAINERS.md).
 
-| Image | Tool(s) | Notes |
-|-------|---------|-------|
-| `hisat2` | HISAT2 2.2.1 + samtools 1.20 | built for this pipeline |
-| `fastp` | fastp 0.23.4 | |
-| `stringtie` | StringTie 2.2.1 | |
-| `gffread` | gffread 0.12.9 | |
-| `feelnc` | FEELnc (+ BioPerl) | |
-| `cpat_plant` | CPAT 1.2.4 + Plant model | |
-| `plant_lnc_boost` | PlantLncBoost (CatBoost) + model | |
-| `lncfinder` | R + LncFinder + **plant SVM & training data** | bundles upstream v1 repo |
-| `diamond` | DIAMOND 2.1.8 | |
-| `intersect_ids` | R + tidyverse + VennDiagram + upstream script | runs prediction_insersection.sh |
-| `sra_tools`,`samtools`,`minimap2`,`cd_hit`,`python_utils` | helpers | |
+### Containers created / rebuilt for this faithful re-implementation
+
+**Three** images were built specifically so the containerized pipeline matches
+Plant-LncRNA-pipeline-v2; the rest were reused as-is.
+
+| Image | Status | Why it was created |
+|-------|--------|--------------------|
+| **`hisat2.sif`** | **new** | Upstream aligns with **HISAT2** (not STAR) and no HISAT2 image existed. Built with HISAT2 2.2.1 **+ samtools** so the rule pipes `hisat2 … \| samtools sort` straight into a sorted BAM. |
+| **`lncfinder.sif`** | **rebuilt** | To run **LncFinder-plant exactly as upstream**: bundles the plant SVM (`Plant_model.rda`) and the training FASTAs from the author's predecessor repo (`Plant-LncRNA-pipline`) and uses `SS.features=FALSE`. The earlier image used the generic *wheat* model with secondary-structure features (ViennaRNA was dropped). |
+| **`intersect_ids.sif`** | **rebuilt** | To run the upstream `prediction_insersection.sh` **verbatim**: rebuilt on `rocker/tidyverse` + `VennDiagram`. The earlier image was base-R only and could not run that script. |
+
+(`star.sif` from the earlier STAR-based version is **retired** — replaced by `hisat2`.)
+
+### Full container set
+
+| Image | Tool(s) |
+|-------|---------|
+| `hisat2` *(new)* | HISAT2 2.2.1 + samtools 1.20 |
+| `lncfinder` *(rebuilt)* | R + LncFinder + plant SVM & training data |
+| `intersect_ids` *(rebuilt)* | R + tidyverse + VennDiagram + upstream intersection script |
+| `fastp` | fastp 0.23.4 |
+| `stringtie` | StringTie 2.2.1 |
+| `gffread` | gffread 0.12.9 |
+| `feelnc` | FEELnc (+ BioPerl) |
+| `cpat_plant` | CPAT 1.2.4 + Plant hexamer/logit model |
+| `plant_lnc_boost` | PlantLncBoost (CatBoost) + model |
+| `diamond` | DIAMOND 2.1.8 |
+| `sra_tools` | sra-tools 3.1.1 + pigz |
+| `samtools` | samtools 1.20 |
+| `minimap2` | minimap2 2.28 *(benchmarking)* |
+| `cd_hit` | cd-hit 4.8.1 *(benchmarking)* |
+| `python_utils` | Python 3 |
 
 ---
 
