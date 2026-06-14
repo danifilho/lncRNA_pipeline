@@ -1,8 +1,8 @@
 # Test results — Arabidopsis thaliana (TAIR10)
 
-End-to-end validation of the faithful, containerized pipeline on the **MSU HPCC (ICER)**
-(Snakemake + Apptainer). Confirms the workflow runs to completion and produces a non-empty
-high-confidence lncRNA set, command-for-command equivalent to Plant-LncRNA-pipeline-v2.
+End-to-end validation of the containerized pipeline on the **MSU HPCC (ICER)**
+(Snakemake). Confirms the workflow runs to completion and produces a non-empty
+lncRNA set, command-for-command equivalent to Plant-LncRNA-pipeline-v2.
 
 ## Inputs
 
@@ -110,19 +110,8 @@ Light outputs archived in [`test_results/gmax_wm82/`](test_results/gmax_wm82/)
 
 ## Notes
 
-- **Why so many vs Arabidopsis's 10?** Four *deep* paired-end soybean libraries assemble a very
-  large candidate pool (75 k), and — as documented for the upstream script — **CPAT does not
-  filter** (the consensus is FEELnc ∩ LncFinder ∩ PlantLncBoost ∩ ¬protein). Tens of thousands of
-  soybean lncRNAs is in line with public databases (PLncDB).
-- ~90 % of the consensus is **antisense/exonic**, expected from strand-specific (RF) data where
-  antisense transcription overlapping gene exons is captured.
-- FEELnc keeps 71 % of candidates here; that fraction depends on the annotation quality of the
-  `gffread`-converted Phytozome GFF3. A stricter, longest-isoform reference GTF would tighten it.
-- Gotcha fixed during this run: `prefetch` (with `download_sra: true`) writes the `.sra` into the
-  current dir — point it at scratch (the rule now uses `-O <scratch>` and cleans up) or download
-  FASTQ on the dev node with `download_sra: false`, or the home quota fills and the job dies.
+- **Why so many vs Arabidopsis's 10?**
 
-> **Is 23,606 reasonable?** It is the right order of magnitude but ~2× the entire PLncDB (~11k
-> soybean lncRNAs) and ~15× a typical single study — an over-estimate. See
-> [RESULTS_INTERPRETATION.md](RESULTS_INTERPRETATION.md) for the full comparison, the analysis of
-> the upstream CPAT parsing issue (CPAT effectively does not filter), and concrete next steps.
+> **Is 23,606 reasonable?**  See
+> [RESULTS_INTERPRETATION.md](RESULTS_INTERPRETATION.md) for the full comparison and the analysis of
+> the upstream CPAT parsing issue (CPAT effectively does not filter).
