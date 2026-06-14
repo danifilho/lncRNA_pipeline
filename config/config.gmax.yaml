@@ -1,0 +1,66 @@
+# Glycine max example (Plant-LncRNA-pipeline-v2 README section 4).
+# Genome: Phytozome Wm82.a6.v1 (you download it; see docs/RUNNING_GMAX_EXAMPLE.md).
+# Outputs + index + containers on scratch (home quota is tight).
+
+species: "g.max"
+prefix: "soy"
+
+download_sra: false
+strand_specific: true       # set true if the libraries are RF strand-specific
+
+# Inputs (you place these).
+sra_accessions: "{species}/01_inputs/{species}_sra_IDs.txt"
+raw_fastq_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/01_inputs/raw_fastq"
+reference_fasta: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/01_inputs/{species}.chromosomes.fa"
+annotation_gtf: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/01_inputs/{species}_mRNA.gtf"
+
+# Index + outputs on scratch.
+hisat2_index_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/01_inputs/{prefix}_hisat2_index"
+fastp_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/01_fastp"
+align_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/02_hisat2"
+stringtie_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/03_stringtie"
+gffread_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/04_gffread"
+feelnc_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/05_FEELnc"
+cpat_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/06_cpat"
+lncboost_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/07_lncBoost"
+lncfinder_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/08_lncFinder"
+diamond_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/09_diamond"
+final_dir: "/mnt/scratch/dasilvaf/iwgc_lncRNA/{species}/03_outputs/10_final"
+
+# Upstream models / scripts.
+cpat_hexamer: "/opt/Plant-LncRNA-pipeline-v2/Model/Plant_Hexamer.tsv"
+cpat_logit: "scripts/Plant.logit.v2.RData"
+plant_lncboost_script_dir: "/opt/Plant-LncRNA-pipeline-v2/PlantLncBoost/Script"
+plant_lncboost_model: "/opt/Plant-LncRNA-pipeline-v2/Model/PlantLncBoost_model.cb"
+intersect_script: "workflow/scripts/prediction_insersection.sh"
+
+diamond_db: "resources/uniprot/uniprot_out.dmnd"
+uniprot_fasta: "resources/uniprot/uniprot_sprot.fasta"
+
+threads:
+  prefetch: 8
+  fastp: 8
+  hisat2_index: 16
+  hisat2_align: 16
+  stringtie_assemble: 12
+  stringtie_merge: 4
+  feelnc_filter: 20
+  cpat: 8
+  lncboost: 8
+  lncfinder: 8
+  diamond: 24
+  intersect: 4
+  gffread: 2
+
+containers:
+  sra_tools: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/sra_tools.sif"
+  fastp: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/fastp.sif"
+  hisat2: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/hisat2.sif"
+  stringtie: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/stringtie.sif"
+  gffread: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/gffread.sif"
+  feelnc: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/feelnc.sif"
+  cpat: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/cpat_plant.sif"
+  lncboost: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/plant_lnc_boost.sif"
+  lncfinder: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/lncfinder.sif"
+  diamond: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/diamond.sif"
+  intersect: "/mnt/scratch/dasilvaf/iwgc_lncRNA/containers/images/intersect_ids.sif"

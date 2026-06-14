@@ -170,6 +170,10 @@ snakemake --snakefile workflow/Snakefile --configfile config/config.yaml --cores
 On Slurm, wrap the `snakemake` call in `sbatch` (see `scripts/run_pipeline_ath.sb`): put the
 `apptainer` binary on `PATH` and bind the project tree via `APPTAINER_BINDPATH`.
 
+To reproduce the upstream README's **Glycine max example** (Phytozome Wm82.a6.v1 + the
+`SRR1174*` runs) end-to-end on HPC, follow
+[docs/RUNNING_GMAX_EXAMPLE.md](docs/RUNNING_GMAX_EXAMPLE.md) (ready-made `config/config.gmax.yaml`, `scripts/run_pipeline_gmax.sb`, and a FASTQ download helper).
+
 ---
 
 ## Fidelity to upstream
@@ -196,15 +200,21 @@ published script's behavior; it is kept verbatim by design.
 
 ---
 
-## Test results (Arabidopsis TAIR10)
+## Test results
 
 End-to-end validation on the MSU HPCC — full report in
-[docs/TEST_RESULTS.md](docs/TEST_RESULTS.md), output files in
-[docs/test_results/arabidopsis_tair10/](docs/test_results/arabidopsis_tair10/).
+[docs/TEST_RESULTS.md](docs/TEST_RESULTS.md).
 
-- **Inputs:** TAIR10 (RefSeq `GCF_000001735.4`); `SRR2073143` + `SRR1688325` (6M reads each); UniProt SwissProt.
-- **Funnel:** 2,674 candidates → FEELnc 14 · LncFinder-noncoding 585 · PlantLncBoost 593 → **10 lncRNAs**.
-- **Result:** `MSTRG.1000.1, 2055.1, 2326.2, 3725.1, 5145.1, 9727.1, 10838.1, 11740.1, 14179.1, 16769.1`.
+**Arabidopsis thaliana (TAIR10)** — small smoke test
+([outputs](docs/test_results/arabidopsis_tair10/)):
+- Inputs: TAIR10 (RefSeq `GCF_000001735.4`); `SRR2073143` + `SRR1688325` (6 M reads each).
+- Funnel: 2,674 candidates → FEELnc 14 · LncFinder 585 · PlantLncBoost 593 → **10 lncRNAs**.
+
+**Glycine max (Phytozome Wm82.a6.v1)** — the upstream README's own example
+([outputs](docs/test_results/gmax_wm82/), guide: [RUNNING_GMAX_EXAMPLE.md](docs/RUNNING_GMAX_EXAMPLE.md)):
+- Inputs: Wm82.a6.v1 genome + `SRR1174214/17/18/32` (paired-end, RF-stranded).
+- Funnel: 75,327 candidates → FEELnc 53,515 · LncFinder 62,564 · PlantLncBoost 62,194 → **23,606 lncRNAs**.
+- Larger because of 4 deep stranded libraries + the upstream CPAT-non-filtering quirk (kept verbatim).
 
 ---
 

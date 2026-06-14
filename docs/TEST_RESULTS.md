@@ -61,3 +61,63 @@ Aligner (HISAT2), assembler (StringTie), all four classifiers (FEELnc, CPAT-plan
 DIAMOND, and the intersection script are the upstream tools/commands/models. The three packaging
 deviations (logit serialization format, training-data source, Venn compat line) are documented in
 the README and change neither the method nor the result.
+
+---
+
+# Test results — Glycine max (Phytozome Wm82.a6.v1)
+
+The upstream README's own example data (Plant-LncRNA-pipeline-v2 §4), run end-to-end on the MSU
+HPCC. Slurm job `9944833`, `COMPLETED`, 1 h 54 m on 24 cores / 96 GB.
+
+## Inputs
+
+| Input | Value | Source |
+|-------|-------|--------|
+| Genome + annotation | **Glycine max Wm82.a6.v1** — `Gmax_880_v6.0.fa` + `Gmax_880_Wm82.a6.v1.gene_exons.gff3` (→ GTF via `gffread -T`) | Phytozome 13 (JGI) |
+| RNA-seq | `SRR1174214`, `SRR1174217`, `SRR1174218`, `SRR1174232` — **paired-end**, ~25–37 M pairs each | SRA / ENA |
+| Library | strand-specific (`strand_specific: true` → `hisat2 --rna-strandness RF`, `stringtie --rf`) | as in the upstream README |
+| Protein DB | UniProt SwissProt | UniProt |
+
+Config: [`config/config.gmax.yaml`](../config/config.gmax.yaml). Slurm wrapper:
+[`scripts/run_pipeline_gmax.sb`](../scripts/run_pipeline_gmax.sb). Step-by-step:
+[`docs/RUNNING_GMAX_EXAMPLE.md`](RUNNING_GMAX_EXAMPLE.md).
+
+## Funnel
+
+| Stage | Count |
+|-------|------:|
+| `MSTRG` candidate transcripts | 75,327 |
+| FEELnc candidate lncRNAs | 53,515 |
+| LncFinder-plant non-coding | 62,564 |
+| PlantLncBoost lncRNA (label = 1) | 62,194 |
+| DIAMOND protein hits removed (`pident>60 & e<1e-5`, unique) | 36,164 |
+| **Consensus (`prediction_insersection.sh`, verbatim)** | **23,606** |
+
+## Classification of the 23,606 lncRNAs (FEELnc_classifier, upstream §9)
+
+| Category | Count |
+|----------|------:|
+| antisense / exonic | 21,341 |
+| intergenic | 1,153 |
+| downstream | 231 |
+| upstream | 199 |
+| bidirectional | 191 |
+| intronic | 101 |
+
+Light outputs archived in [`test_results/gmax_wm82/`](test_results/gmax_wm82/)
+(`Final_lncRNA_results.txt`, the category files, `Venn_pred_lncRNA.pdf`). The full
+`lncRNA.gtf` (14 MB) / `lncRNA.fasta` (27 MB) / `lncRNA_classes.txt` (15 MB) stay on scratch.
+
+## Notes
+
+- **Why so many vs Arabidopsis's 10?** Four *deep* paired-end soybean libraries assemble a very
+  large candidate pool (75 k), and — as documented for the upstream script — **CPAT does not
+  filter** (the consensus is FEELnc ∩ LncFinder ∩ PlantLncBoost ∩ ¬protein). Tens of thousands of
+  soybean lncRNAs is in line with public databases (PLncDB).
+- ~90 % of the consensus is **antisense/exonic**, expected from strand-specific (RF) data where
+  antisense transcription overlapping gene exons is captured.
+- FEELnc keeps 71 % of candidates here; that fraction depends on the annotation quality of the
+  `gffread`-converted Phytozome GFF3. A stricter, longest-isoform reference GTF would tighten it.
+- Gotcha fixed during this run: `prefetch` (with `download_sra: true`) writes the `.sra` into the
+  current dir — point it at scratch (the rule now uses `-O <scratch>` and cleans up) or download
+  FASTQ on the dev node with `download_sra: false`, or the home quota fills and the job dies.

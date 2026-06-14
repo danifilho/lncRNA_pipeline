@@ -59,3 +59,10 @@ fastp.html
 fastp.json
 *.feelncclassifier.log
 /-
+# large genome/download staging (never commit)
+*.gz
+*.zip
+G.max/
+**/Phytozome/
+Download_*_File_Manifest.csv
+.ncbi/

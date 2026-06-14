@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=iwgc_gmax
+#SBATCH --partition=general-long
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=96G
+#SBATCH --time=24:00:00
+#SBATCH --output=%x_%j.log
+
+set -euo pipefail
+
+PROJECT=/mnt/ffs24/home/dasilvaf/projects/IWGC_lncRNA_pipeline
+cd "$PROJECT"
+
+source /mnt/ffs24/home/dasilvaf/miniforge3/etc/profile.d/conda.sh
+conda activate iwgc-lnc-snakemake
+
+# make apptainer visible without shadowing the env
+export PATH="$PATH:/mnt/ffs24/home/dasilvaf/miniforge3/bin"
+export APPTAINER_BINDPATH="$PROJECT,/mnt/scratch/dasilvaf/iwgc_lncRNA"
+export APPTAINER_CACHEDIR=/mnt/scratch/dasilvaf/iwgc_lncRNA/.apptainer_cache
+mkdir -p "$APPTAINER_CACHEDIR"
+
+echo "Host: $(hostname)  cores: ${SLURM_CPUS_PER_TASK}"
+
+snakemake \
+  --snakefile workflow/Snakefile \
+  --configfile config/config.gmax.yaml \
+  --cores "${SLURM_CPUS_PER_TASK}" \
+  --use-singularity \
+  --printshellcmds \
+  --rerun-triggers mtime \
+  --rerun-incomplete \
+  --keep-going
+
+echo "SNAKEMAKE_EXIT=$?"
+ls -lah /mnt/scratch/dasilvaf/iwgc_lncRNA/g.max/03_outputs/10_final/ 2>&1 || true

@@ -147,10 +147,13 @@ rule prefetch_sra:
         r"""
         set -euo pipefail
         mkdir -p {params.raw_dir} {params.raw_dir}/.prefetch
-        prefetch {wildcards.sample} --max-size 30G
-        fasterq-dump {wildcards.sample} --outdir {params.raw_dir} \
-            --split-files --skip-technical --threads {threads} --temp /tmp
+        # download the .sra into the (scratch) raw dir, never the cwd/home
+        prefetch {wildcards.sample} --max-size 30G -O {params.raw_dir}/.prefetch
+        fasterq-dump {params.raw_dir}/.prefetch/{wildcards.sample}/{wildcards.sample}.sra \
+            --outdir {params.raw_dir} --split-files --skip-technical \
+            --threads {threads} --temp {params.raw_dir}/.prefetch
         pigz -p {threads} -f {params.raw_dir}/{wildcards.sample}*.fastq
+        rm -rf {params.raw_dir}/.prefetch/{wildcards.sample}
         touch {output.done}
         """
 
