@@ -78,6 +78,37 @@ So CPAT contributes essentially nothing to the consensus.
 We therefore reproduce the **published script's behavior with current tidyverse, by choice**
 (keeping it verbatim). We do **not** claim the authors' own published results are wrong.
 
+## Validation against PLncDB (minimap2)
+
+We aligned the 23,606 predicted lncRNAs against known soybean lncRNAs from **PLncDB** (5,767
+non-redundant *Glycine max* sequences, taxid 3847, via RNAcentral) with `minimap2 -x cdna`
+(`scripts/validate_vs_truth.sh`; full metrics in
+[`test_results/gmax_wm82/validation_vs_PLncDB.txt`](test_results/gmax_wm82/validation_vs_PLncDB.txt)).
+
+| identity cutoff | predictions matching a known lncRNA | known lncRNAs recovered (recall) |
+|---|---:|---:|
+| 0.80 | 764 (3.2 %) | 619 / 5,767 (**10.7 %**) |
+| 0.90 | 511 (2.2 %) | 455 / 5,767 (**7.9 %**) |
+| 0.95 | 394 (1.7 %) | 373 / 5,767 (**6.5 %**) |
+
+**Reading these numbers honestly:**
+
+- **Recall is low (~7–11 %).** We recover only a small fraction of known soybean lncRNAs. This is
+  expected: PLncDB aggregates many studies and tissues, whereas this run used only **4 RNA-seq
+  libraries (mostly root)**, and lncRNAs are highly tissue/condition-specific — a small sample set
+  captures few of them.
+- **Only ~2–3 % of predictions match a known lncRNA.** A low match rate alone does **not** prove the
+  rest are false positives (PLncDB is not exhaustive; genuinely novel lncRNAs are possible). **But
+  combined with the inflation signals** (CPAT not filtering, ~90 % antisense, no isoform collapse),
+  it indicates that a large fraction of the 23,606 are low-confidence / spurious rather than
+  bona-fide lncRNAs.
+- Assemblies differ (predictions Wm82.a6 / Phytozome vs PLncDB Wm82.a4 / NCBI), but the same cultivar
+  is ~identical between versions, so this low overlap is **real, not assembly noise**.
+
+**Takeaway:** treat the 23,606 as a *permissive candidate set*, not a curated annotation. The low
+recall is driven mostly by limited input data; the low match rate plus the inflation factors mean the
+next steps below would materially tighten the result.
+
 ## Next steps / possible solutions (not applied — would deviate from "verbatim upstream")
 
 1. **Fix the CPAT parse (1 line):** read the CPAT output by row names / explicit column index so
@@ -85,9 +116,9 @@ We therefore reproduce the **published script's behavior with current tidyverse,
    to pull the consensus toward the literature range.
 2. **Collapse to one transcript per gene** (longest isoform) for gene-level counts.
 3. **Use a longest-isoform reference GTF** for FEELnc to tighten overlap filtering.
-4. **Enable the truth-set validation** (`run_truth_alignment`: cd-hit + minimap2 vs the PLncDB
-   soybean lncRNAs) — already in the pipeline, currently off — to report TP/FP/FN against the ~11k
-   PLncDB set and turn the count into a precision/recall statement.
+4. **Truth-set validation — done** (see section above): minimap2 vs PLncDB gives ~7–11 % recall and
+   ~2–3 % of predictions matching known lncRNAs. To raise recall, add many more RNA-seq libraries
+   across tissues/conditions; to raise the match rate, apply steps 1–3.
 5. **Confirm library strandness** (e.g. RSeQC `infer_experiment.py`) before trusting the
    antisense-heavy classification.
 

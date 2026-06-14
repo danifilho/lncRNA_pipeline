@@ -1,0 +1,12 @@
+Validation of g.max predicted lncRNAs vs PLncDB soybean lncRNAs (truth)
+Truth: PLncDB / RNAcentral, Glycine max (taxid 3847), 5767 non-redundant lncRNA sequences
+Predictions: 23606 lncRNAs (Wm82.a6.v1 run)
+Method: minimap2 -x cdna; identity = matches/blocklen (PAF col10/col11)
+
+cutoff   pred_matching_known           known_recovered (recall)
+0.80     764  (3.2% of predictions)    619 / 5767  (10.7%)
+0.90     511  (2.2% of predictions)    455 / 5767  ( 7.9%)
+0.95     394  (1.7% of predictions)    373 / 5767  ( 6.5%)
+
+Note: assemblies differ (predictions Wm82.a6 Phytozome; PLncDB Wm82.a4 NCBI) but the same
+cultivar is ~identical between versions, so the low overlap is real, not assembly noise.
